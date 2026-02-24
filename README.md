@@ -21,7 +21,7 @@ For MacOS:
 bash init.sh
 
 # Update Project With Changes
-bash build.sh
+bash build_macos.sh
 
 # Run Project
 ./dist/game
