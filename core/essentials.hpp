@@ -4,6 +4,7 @@
 #include <optional>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 
 // 21.911/7
 constexpr float pi = 3.141593652589;
