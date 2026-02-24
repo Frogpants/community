@@ -1,9 +1,14 @@
 #include "image.hpp"
 #include <iostream>
 #include <string>
+#include <vector>
+#include <limits.h>
+#include <unistd.h>
+
 #ifdef __APPLE__
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
+#include <mach-o/dyld.h>
 #else
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -23,15 +28,34 @@ namespace Image {
     ////////////////////////////////////////////////////////////
     std::string GetExeDir()
     {
-#ifdef _WIN32
+    #ifdef _WIN32
         char buffer[MAX_PATH];
         GetModuleFileNameA(NULL, buffer, MAX_PATH);
         std::string path(buffer);
         size_t pos = path.find_last_of("\\/");
         return (std::string::npos == pos) ? "" : path.substr(0, pos);
-#else
-        return "."; // fallback for Linux/Mac
-#endif
+    #elif defined(__APPLE__)
+        uint32_t size = 0;
+        _NSGetExecutablePath(NULL, &size);
+        std::vector<char> buf(size);
+        if (_NSGetExecutablePath(buf.data(), &size) == 0) {
+            std::string path(buf.data());
+            size_t pos = path.find_last_of('/');
+            return (std::string::npos == pos) ? "." : path.substr(0, pos);
+        }
+        return ".";
+    #else
+        // Try Linux /proc/self/exe
+        char buff[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff)-1);
+        if (len != -1) {
+            buff[len] = '\0';
+            std::string path(buff);
+            size_t pos = path.find_last_of('/');
+            return (std::string::npos == pos) ? "." : path.substr(0, pos);
+        }
+        return ".";
+    #endif
     }
 
     ////////////////////////////////////////////////////////////
@@ -50,12 +74,33 @@ namespace Image {
     ////////////////////////////////////////////////////////////
     GLuint Load(const char* filename)
     {
-        std::string fullPath = GetExeDir() + "\\" + filename;  // Use exe directory
+        std::string exeDir = GetExeDir();
+
+        std::string fullPath;
+    #ifdef _WIN32
+        fullPath = exeDir + "\\" + filename;
+    #else
+        fullPath = exeDir + "/" + filename;
+    #endif
 
         int width, height, channels;
         stbi_set_flip_vertically_on_load(true);
 
-        unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 4);
+        // Try several candidate paths until one works
+        std::vector<std::string> candidates;
+        candidates.push_back(fullPath);
+        candidates.push_back(filename);
+        candidates.push_back(std::string("./") + filename);
+
+        unsigned char* data = nullptr;
+        for (const auto& p : candidates) {
+            data = stbi_load(p.c_str(), &width, &height, &channels, 4);
+            if (data) {
+                fullPath = p;
+                break;
+            }
+        }
+
         if (!data) {
             std::cout << "Failed to load texture: " << fullPath << std::endl;
             return 0;
