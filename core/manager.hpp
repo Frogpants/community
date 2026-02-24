@@ -6,8 +6,6 @@
 #include "mouse/mouse.hpp"
 #include "essentials.hpp"
 
-#include "../game/bullet.hpp"
-
 inline float gamemode = 0.0f;
 
 inline vec2 screen = vec2(1280.0, 720.0);

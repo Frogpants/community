@@ -3,7 +3,7 @@
 echo " Building fungi-demo Windows Executable "
 
 DIST_DIR="dist"
-EXE_NAME="fungi-demo.exe"
+EXE_NAME="game.exe"
 
 # Clean old build
 rm -rf $DIST_DIR

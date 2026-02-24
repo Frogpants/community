@@ -12,7 +12,6 @@
 #include "game/player.hpp"
 #include "game/enemy.hpp"
 #include "game/camera.hpp"
-#include "game/bullet.hpp"
 
 #include "core/manager.hpp"
 #include "core/essentials.hpp"
@@ -22,7 +21,6 @@
 Player player;
 Camera camera;
 std::vector<Enemy> enemies;
-std::vector<Bullet> bullets;
 
 int tick = 0;
 
@@ -98,7 +96,7 @@ int main()
     if (!glfwInit())
         return -1;
 
-    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Roguelike Demo", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Oasis", nullptr, nullptr);
     if (!window)
     {
         glfwTerminate();
@@ -145,7 +143,6 @@ int main()
 
     GLuint playerTex = Image::Load("assets/agent-bullet.png");
     GLuint enemyTex = Image::Load("assets/agent-enemy.png");
-    GLuint bulletTex = Image::Load("assets/bullet.png");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -165,37 +162,7 @@ int main()
         player.controls();
         player.pos = player.pos + player.vel;
 
-        if (Mouse::IsDown(0)) {
-            player.cooldown = clamp(0.0, 100.0, player.cooldown);
-            if (player.cooldown == 0.0) {
-                Bullet b;
-                b.pos = player.pos;
-
-                vec2 mouseWorld = GetMouseWorld(window);
-
-                b.dir = pointAt(player.pos, mouseWorld);
-
-                bullets.push_back(b);
-                player.cooldown = 100.0;
-            }
-            if (tick % 50 == 0) {
-                player.cooldown -= 100.0;
-            }
-        }
-
         vec2 force = vec2(0.0);
-
-        for (auto& b : bullets) {
-            b.move();
-            if (abs(b.pos.x - camera.pos.x) >= screen.x) {
-                bullets.erase(bullets.begin() + findIndex(bullets, b));
-            }
-
-            if (abs(b.pos.y - camera.pos.y) >= screen.y) {
-                bullets.erase(bullets.begin() + findIndex(bullets, b));
-            }
-            Image::Draw(bulletTex, b.pos, 100, b.dir);
-        }
 
 
         for (auto& e : enemies) {
@@ -227,15 +194,6 @@ int main()
             }
 
             //e.pos = e.pos + force * e.speed * 4.0;
-
-            for (auto& b : bullets) {
-                if (BallCollide(e.pos, e.dim, b.pos, b.dim)) {
-                    player.coins += 1.0;
-
-                    enemies.erase(enemies.begin() + findIndex(enemies, e));
-                    bullets.erase(bullets.begin() + findIndex(bullets, b));
-                }
-            }
 
             Image::Draw(enemyTex, e.pos, 150);
         }
