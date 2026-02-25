@@ -7,7 +7,7 @@
 struct Tile {
     vec2 pos = vec2(0.0);
 
-    GLuint texture = Image::Load("../assets/null.png");
+    int id = 0;
 
     int layer = 0;
 };

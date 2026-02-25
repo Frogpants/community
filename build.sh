@@ -7,6 +7,7 @@ echo "======================================"
 DIST_DIR="dist"
 EXE_NAME="game.exe"
 ASSET_DIR="assets"
+DATA_DIR="game/data"
 
 # Stop immediately if any command fails
 set -e
@@ -50,6 +51,14 @@ if [ -d "$ASSET_DIR" ]; then
     echo "Copying assets..."
     mkdir -p "$DIST_DIR/$ASSET_DIR"
     cp -r "$ASSET_DIR/"* "$DIST_DIR/$ASSET_DIR/"
+else
+    echo "WARNING: No assets folder found!"
+fi
+
+if [ -d "$DATA_DIR" ]; then
+    echo "Copying data..."
+    mkdir -p "$DIST_DIR/$DATA_DIR"
+    cp -r "$DATA_DIR/"* "$DIST_DIR/$DATA_DIR/"
 else
     echo "WARNING: No assets folder found!"
 fi

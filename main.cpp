@@ -34,7 +34,6 @@
 Player player;
 Camera camera;
 std::vector<Character> characters;
-std::vector<Tile> tiles;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
 
@@ -82,6 +81,11 @@ vec2 GetMouseWorld(GLFWwindow* window) {
 
 int main()
 {
+    std::vector<Tile> tiles;
+    if (!isEmpty("game/data/map.dat")) {
+        tiles = load("game/data/map.dat");
+    }
+    
     srand((unsigned int)time(nullptr));
 
     if (!glfwInit())
@@ -125,7 +129,8 @@ int main()
         for (const Tile& t : tiles) {
             if (abs(t.pos.x - camera.pos.x) < screen.x) {
                 if (abs(t.pos.y - camera.pos.y) < screen.y) {
-                    Image::Draw(t.texture, t.pos, 32, 0.0);
+                    GLuint tex = Image::Load(tileTex[t.id].c_str());
+                    Image::Draw(tex, t.pos, 32, 0.0);
                 }
             }
         }
@@ -140,11 +145,12 @@ int main()
             if (mode) {
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
-                t.texture = Image::Load(tileTex[tile].c_str());
-                Image::Draw(t.texture, t.pos, 32, 0.0);
+                Image::Draw(Image::Load(tileTex[tile].c_str()), t.pos, 32, 0.0);
 
                 if (Mouse::IsPressed(0)) {
                     tiles.push_back(t);
+
+                    save(tiles, "game/data/map.dat");
                 }
             }
 
