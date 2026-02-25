@@ -18,53 +18,36 @@
 #include <cmath>
 
 #include "game/player.hpp"
-#include "game/enemy.hpp"
+#include "game/character.hpp"
 #include "game/camera.hpp"
+#include "game/tile.hpp"
 
 #include "core/manager.hpp"
 #include "core/essentials.hpp"
 #include "core/collision.hpp"
 #include "core/images/image.hpp"
+#include "core/file.hpp"
+
+
+// Game Assets
 
 Player player;
 Camera camera;
-std::vector<Enemy> enemies;
+std::vector<Character> characters;
+std::vector<Tile> tiles;
+
+std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
+
+
+// Game Control Variables
 
 int tick = 0;
 
+bool editor = false;
+int mode = 0;
+int tile = 0;
 
-void DrawQuad(vec2 pos, float size, float r, float g, float b)
-{
-    glColor3f(r, g, b);
-    glBegin(GL_QUADS);
-        glVertex2f(pos.x - size, pos.y - size);
-        glVertex2f(pos.x + size, pos.y - size);
-        glVertex2f(pos.x + size, pos.y + size);
-        glVertex2f(pos.x - size, pos.y + size);
-    glEnd();
-}
-
-void DrawCircle(vec2 pos, float radius, float r, float g, float b)
-{
-    const int segments = 32; // more = smoother
-
-    glColor3f(r, g, b);
-    glBegin(GL_TRIANGLE_FAN);
-
-        // Center
-        glVertex2f(pos.x, pos.y);
-
-        // Outer ring
-        for (int i = 0; i <= segments; ++i)
-        {
-            float angle = 2.0f * 3.1415926f * i / segments;
-            float x = pos.x + std::cos(angle) * radius;
-            float y = pos.y + std::sin(angle) * radius;
-            glVertex2f(x, y);
-        }
-
-    glEnd();
-}
+int running = 1;
 
 
 void DrawHealthBar(float health)
@@ -112,45 +95,20 @@ int main()
     }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable VSync (locks to monitor refresh, usually 60 FPS)
+    glfwSwapInterval(1);
 
     // Setup 2D projection
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    //gluPerspective(70.0, screen.x/screen.y, 0.1, 1000.0);
-    //glFrustum(-screen.x, screen.x, -screen.y, screen.y, 0.1, 1000.0);
     glOrtho(-screen.x, screen.x, -screen.y, screen.y, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
-
-    
-    for (int i = 0; i < 25; i++) {
-        Enemy e;
-        vec2 pos = vec2(0.0);
-        if (randInt(0, 1) == 1) {
-            pos.x = randInt(-screen.x, screen.x);
-            if (randInt(0,1)) {
-                pos.y = screen.y + randInt(0, 100);
-            } else {
-                pos.y = -(screen.y + randInt(0, 100));
-            }
-        } else {
-            pos.y = randInt(-screen.y, screen.y);
-            if (randInt(0,1)) {
-                pos.x = screen.x + randInt(0, 100);
-            } else {
-                pos.x = -(screen.x + randInt(0, 100));
-            }
-        }
-        e.pos = pos + camera.pos;
-        enemies.push_back(e);
-    }
-    
 
     Manager::Init(window);
     Image::Init();
 
-    GLuint playerTex = Image::Load("assets/agent-bullet.png");
-    GLuint enemyTex = Image::Load("assets/agent-enemy.png");
+    player.texture = Image::Load("assets/agent-bullet.png");
+
+    GLuint pause = Image::Load("assets/pause.png");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -160,65 +118,60 @@ int main()
 
         glLoadIdentity();
 
-        tick += 1;
-
-
-        camera.target = player.pos;
-        camera.follow();
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 
-        player.controls();
-        player.pos = player.pos + player.vel;
+        vec2 mouse = GetMouseWorld(window);
 
-        vec2 force = vec2(0.0);
+        for (const Tile& t : tiles) {
+            if (abs(t.pos.x - camera.pos.x) < screen.x) {
+                if (abs(t.pos.y - camera.pos.y) < screen.y) {
+                    Image::Draw(t.texture, t.pos, 32, 0.0);
+                }
+            }
+        }
 
+        Image::Draw(player.texture, player.pos, 150, 0.0);
 
-        for (auto& e : enemies) {
-            e.target = player.pos;
-
-            e.follow();
-            vec2 separation = vec2(0.0f);
-
-            for (auto& t : enemies) {
-                if (&e == &t) continue;
-
-                vec2 diff = e.pos - t.pos;
-                float dist = length(diff) * 0.1;
-                if (BallCollide(e.pos, e.dim * 12.0, t.pos, t.dim * 12.0))
-                    separation = separation + normalize(diff) / dist;
+        if (running) {
+            if(Input::IsPressed("0")) {
+                mode = 1 - mode;
             }
 
-            e.pos = e.pos + separation * e.speed * 4.0;
+            if (mode) {
+                Tile t;
+                t.pos = snap(mouse + 32, 64.0);
+                t.texture = Image::Load(tileTex[tile].c_str());
+                Image::Draw(t.texture, t.pos, 32, 0.0);
 
-            if (BoxCollide(player.pos, player.dim, e.pos, e.dim)) {
-                vec2 diff = player.pos - e.pos;
-                float dist = length(diff) * 0.01;
-
-                force = force + normalize(diff) / dist;
-
-                if (tick % 100 == 0) {
-                    player.health -= 10.0;
+                if (Mouse::IsPressed(0)) {
+                    tiles.push_back(t);
                 }
             }
 
-            //e.pos = e.pos + force * e.speed * 4.0;
+            // Game Running
+            tick += 1;
 
-            Image::Draw(enemyTex, e.pos, 150);
+            camera.target = player.pos;
+            camera.follow();
+
+            player.controls();
+            player.pos = player.pos + player.vel;
+
+            player.health = clamp(0.0, 100.0, player.health);
+        } else {
+            // Game Paused
+
+            Image::Draw(pause, camera.pos, 250, 0.0);
+
         }
-
-        player.pos = player.pos + force * 2.0;
-        Image::Draw(playerTex, player.pos, 150, 0.0);
-
-        player.health = clamp(0.0, 100.0, player.health);
 
         // UI
         glLoadIdentity();
         DrawHealthBar(player.health);
 
-        if(Input::IsDown("escape")) {
-            // change to pause at some point
-            glfwTerminate();
-            return 0;
+        if(Input::IsPressed("escape")) {
+            running = 1 - running;
+            //break;
         }
 
         Manager::Update();

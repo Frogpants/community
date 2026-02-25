@@ -143,6 +143,26 @@ namespace Image {
         glPopMatrix();
     }
 
+    void Draw(GLuint texture, vec2 pos, vec2 size, float angle)
+    {
+        glPushMatrix();
+
+        glTranslatef(pos.x, pos.y, 0);
+        glRotatef(angle, 0, 0, 1);
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glColor3f(1, 1, 1);
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(0, 0); glVertex2f(-size.x, -size.y);
+            glTexCoord2f(1, 0); glVertex2f( size.x, -size.y);
+            glTexCoord2f(1, 1); glVertex2f( size.x,  size.y);
+            glTexCoord2f(0, 1); glVertex2f(-size.x,  size.y);
+        glEnd();
+
+        glPopMatrix();
+    }
+
     ////////////////////////////////////////////////////////////
     // DRAW COLORED RECTANGLE (NO TEXTURE)
     ////////////////////////////////////////////////////////////

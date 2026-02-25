@@ -2,12 +2,15 @@
 
 #include "../core/essentials.hpp"
 #include "../core/manager.hpp"
+#include "../core/images/image.hpp"
 #include "camera.hpp"
 
 struct Player {
     vec2 pos = vec2(0.0);
     vec2 dim = vec2(45.0);
     vec2 vel = vec2(0.0);
+
+    GLuint texture = Image::Load("../assets/null.png");
 
     float coins = 0.0;
 

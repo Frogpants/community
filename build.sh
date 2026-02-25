@@ -1,22 +1,30 @@
 #!/bin/bash
 
+echo "======================================"
 echo " Building fungi-demo Windows Executable "
+echo "======================================"
 
 DIST_DIR="dist"
 EXE_NAME="game.exe"
+ASSET_DIR="assets"
+
+# Stop immediately if any command fails
+set -e
 
 # Clean old build
-rm -rf $DIST_DIR
-mkdir -p $DIST_DIR
+echo "Cleaning old build..."
+rm -rf "$DIST_DIR"
+mkdir -p "$DIST_DIR"
 
 echo "Compiling..."
 
 # Collect all source files
 SRC="main.cpp"
+
 for dir in core/*; do
     if [ -d "$dir" ]; then
         for file in "$dir"/*.cpp; do
-            SRC="$SRC $file"
+            [ -f "$file" ] && SRC="$SRC $file"
         done
     fi
 done
@@ -33,15 +41,20 @@ x86_64-w64-mingw32-g++ $SRC \
     -std=c++17 \
     -O2 \
     -static \
-    -o $DIST_DIR/$EXE_NAME
+    -o "$DIST_DIR/$EXE_NAME"
 
-if [ $? -ne 0 ]; then
-    echo "Build failed"
-    exit 1
+echo "Compilation successful."
+
+# Copy assets safely
+if [ -d "$ASSET_DIR" ]; then
+    echo "Copying assets..."
+    mkdir -p "$DIST_DIR/$ASSET_DIR"
+    cp -r "$ASSET_DIR/"* "$DIST_DIR/$ASSET_DIR/"
+else
+    echo "WARNING: No assets folder found!"
 fi
 
-echo "Copying assets..."
-cp -r assets $DIST_DIR/
-
+echo "======================================"
 echo "Build complete"
 echo "Executable located at: $DIST_DIR/$EXE_NAME"
+echo "======================================"

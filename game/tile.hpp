@@ -1,12 +1,13 @@
 #pragma once
 
 #include "../core/essentials.hpp"
+#include "../core/manager.hpp"
 #include "../core/images/image.hpp"
 
 struct Tile {
     vec2 pos = vec2(0.0);
 
-    GLuint enemyTex = Image::Load("assets/null.png");
+    GLuint texture = Image::Load("../assets/null.png");
 
     int layer = 0;
 };
