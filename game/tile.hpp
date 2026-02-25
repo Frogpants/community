@@ -15,3 +15,16 @@ struct Tile {
 inline vec2 snap(vec2 p, float n) {
     return floor(p / n) * n;
 };
+
+inline int indexOf(const std::vector<Tile>& tiles, const vec2& pos)
+{
+    for (int i = 0; i < (int)tiles.size(); i++)
+    {
+        if (tiles[i].pos.x == pos.x &&
+            tiles[i].pos.y == pos.y)
+        {
+            return i;
+        }
+    }
+    return -1;
+}

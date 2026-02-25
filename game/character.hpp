@@ -14,7 +14,7 @@ struct Character {
     vec2 dim = vec2(45.0);
     float health = 100.0;
 
-    GLuint texture = Image::Load("../assets/null.png");
+    GLuint texture = Image::Load("../assets/tiles/null.png");
 
     float cooldown = 0.0;
 

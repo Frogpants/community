@@ -43,6 +43,8 @@ int tick = 0;
 
 bool editor = false;
 int mode = 0;
+int selectMode = 0;
+int selected = 0;
 int tile = 0;
 
 int running = 1;
@@ -120,6 +122,7 @@ int main()
     player.texture = Image::Load("assets/agent-bullet.png");
 
     GLuint pause = Image::Load("assets/pause.png");
+    GLuint deleteTex = Image::Load("assets/delete.png");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -132,13 +135,17 @@ int main()
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 
         vec2 mouse = GetMouseWorld(window);
-
+        int i = 0;
         for (const Tile& t : tiles) {
             if (abs(t.pos.x - camera.pos.x) < screen.x) {
                 if (abs(t.pos.y - camera.pos.y) < screen.y) {
                     Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
+                    if (BoxCollide(mouse, vec2(0.0), t.pos, vec2(32.0))) {
+                        selected = i;
+                    }
                 }
             }
+            ++i;
         }
 
         Image::Draw(player.texture, player.pos, 150, 0.0);
@@ -153,7 +160,17 @@ int main()
 
             if (mode) {
                 camera.controls();
-                
+
+
+                if (Input::IsPressed("1")) {
+                    selectMode = 0;
+                }
+
+                if (Input::IsPressed("2")) {
+                    selectMode = 1;
+                }
+
+
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
 
@@ -168,10 +185,19 @@ int main()
                 tile = std::clamp(tile, 0, (int)tileTextures.size() - 1);
                 t.id = tile;
 
-                Image::Draw(tileTextures[tile], t.pos, 32, 0.0);
+                if (selectMode == 0) {
+                    Image::Draw(tileTextures[tile], t.pos, 32, 0.0);
+                } else {
+                    Image::Draw(deleteTex, t.pos, 32, 0.0);
+                }
+                    
 
                 if (Mouse::IsPressed(0)) {
-                    tiles.push_back(t);
+                    if (selectMode == 0) {
+                        tiles.push_back(t);
+                    } else {
+                        tiles.erase(tiles.begin() + selected);
+                    }
 
                     save(tiles, "game/data/map.dat");
                 }
