@@ -37,7 +37,6 @@ std::vector<Character> characters;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
 
-
 // Game Control Variables
 
 int tick = 0;
@@ -101,6 +100,14 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+    std::vector<GLuint> tileTextures;
+
+    for (const std::string& path : tileTex)
+    {
+        GLuint img = Image::Load(path.c_str());
+        tileTextures.push_back(img);
+    }
+
     // Setup 2D projection
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -129,8 +136,7 @@ int main()
         for (const Tile& t : tiles) {
             if (abs(t.pos.x - camera.pos.x) < screen.x) {
                 if (abs(t.pos.y - camera.pos.y) < screen.y) {
-                    GLuint tex = Image::Load(tileTex[t.id].c_str());
-                    Image::Draw(tex, t.pos, 32, 0.0);
+                    Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
                 }
             }
         }
@@ -145,7 +151,7 @@ int main()
             if (mode) {
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
-                Image::Draw(Image::Load(tileTex[tile].c_str()), t.pos, 32, 0.0);
+                Image::Draw(tileTextures[tile], t.pos, 32, 0.0);
 
                 if (Mouse::IsPressed(0)) {
                     tiles.push_back(t);
