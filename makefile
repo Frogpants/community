@@ -1,20 +1,32 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
-TARGET = main
+TARGET = dist
 SRC = $(shell find . -name "*.cpp")
+
+UNAME_S := $(shell uname -s)
 
 LDFLAGS = -lglfw -lGL -lGLU -ldl -lpthread
 
 all: $(TARGET)
 
+
+
 $(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)
+ifeq ($(UNAME_S),Darwin)
+	bash build_macos.sh
+else
+	bash build.sh
+endif
 
 clean:
-	rm -f $(TARGET)
+	bash init.sh
 
 run:
-	./main
+ifeq ($(UNAME_S),Darwin)
+	./dist/game
+else
+	./dist/game.exe
+endif
 
 .PHONY: all clean
