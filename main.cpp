@@ -144,13 +144,30 @@ int main()
         Image::Draw(player.texture, player.pos, 150, 0.0);
 
         if (running) {
+            // Game Running
+            tick += 1;
+
             if(Input::IsPressed("0")) {
                 mode = 1 - mode;
             }
 
             if (mode) {
+                camera.controls();
+                
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
+
+                if (Input::IsPressed("x")) {
+                    tile += 1;
+                }
+
+                if (Input::IsPressed("z")) {
+                    tile -= 1;
+                }
+
+                tile = std::clamp(tile, 0, (int)tileTextures.size() - 1);
+                t.id = tile;
+
                 Image::Draw(tileTextures[tile], t.pos, 32, 0.0);
 
                 if (Mouse::IsPressed(0)) {
@@ -158,16 +175,13 @@ int main()
 
                     save(tiles, "game/data/map.dat");
                 }
+            } else {
+                camera.target = player.pos;
+                camera.follow();
+
+                player.controls();
+                player.pos = player.pos + player.vel;
             }
-
-            // Game Running
-            tick += 1;
-
-            camera.target = player.pos;
-            camera.follow();
-
-            player.controls();
-            player.pos = player.pos + player.vel;
 
             player.health = clamp(0.0, 100.0, player.health);
         } else {
