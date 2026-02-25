@@ -1,28 +1,13 @@
 ### Commands
 
-For Windows OS:
 
 ```bash
 # Initialize Project
-bash init.sh
+make clean
 
 # Update Project With Changes
-bash build.sh
+make
 
 # Run Project
-./dist/game.exe
-```
-
-
-For MacOS:
-
-```bash
-# Initialize Project
-bash init.sh
-
-# Update Project With Changes
-bash build_macos.sh
-
-# Run Project
-./dist/game
+make run
 ```
