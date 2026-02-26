@@ -20,11 +20,11 @@ echo "Detecting local GLFW build..."
 FLAGS=""
 USING_LOCAL_GLFW=false
 
-# Check for locally built GLFW dylib (any version)
-if [ -d "glfw/build/src" ] && ls glfw/build/src/libglfw*.dylib >/dev/null 2>&1; then
+# Check for locally built GLFW static library
+if [ -d "glfw/build/src" ] && [ -f "glfw/build/src/libglfw3.a" ]; then
     echo "Using local GLFW build"
-    FLAGS="-Iglfw/include -Lglfw/build/src -lglfw \
-           -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo"
+    FLAGS="-Iglfw/include glfw/build/src/libglfw3.a \
+           -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework Metal -framework QuartzCore"
     USING_LOCAL_GLFW=true
 
 elif command -v pkg-config >/dev/null 2>&1 && pkg-config --exists glfw3; then
