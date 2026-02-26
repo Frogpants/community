@@ -10,6 +10,11 @@ namespace fs = std::filesystem;
 inline std::vector<std::string> grabFiles(const std::string& folderPath) {
     std::vector<std::string> files;
 
+    // Check if directory exists before iterating
+    if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) {
+        return files;
+    }
+
     for (const auto& entry : fs::directory_iterator(folderPath)) {
         if (entry.is_regular_file()) {
             // Add folder path to filename

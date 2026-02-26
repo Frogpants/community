@@ -115,8 +115,14 @@ int main()
     Manager::Init(window);
     Image::Init();
 
+<<<<<<< HEAD
     player.texture = Image::Load("assets/agent-bullet.png");
 
+=======
+    // Load textures for player and characters now that OpenGL context exists
+    player.texture = Image::Load("assets/agent-bullet.png");
+    
+>>>>>>> 18520a5 (fix macos make)
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
 
