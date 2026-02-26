@@ -6,6 +6,12 @@ SRC = $(shell find . -name "*.cpp")
 
 UNAME_S := $(shell uname -s)
 
+ifeq ($(UNAME_S),Darwin)
+	RUN_TARGET = ./dist/game
+else
+	RUN_TARGET = ./dist/game.exe
+endif
+
 LDFLAGS = -lglfw -lGL -lGLU -ldl -lpthread
 
 all: $(TARGET)
@@ -23,10 +29,6 @@ clean:
 	bash init.sh
 
 run:
-ifeq ($(UNAME_S),Darwin)
-	./dist/game
-else
-	./dist/game.exe
-endif
+	$(RUN_TARGET)
 
 .PHONY: all clean
