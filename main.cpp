@@ -115,6 +115,8 @@ int main()
     Manager::Init(window);
     Image::Init();
 
+    player.texture = Image::Load("assets/agent-bullet.png");
+
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
 
