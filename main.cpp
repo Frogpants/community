@@ -93,7 +93,7 @@ int main()
     if (!glfwInit())
         return -1;
 
-    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Oasis", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Project Oasis", nullptr, nullptr);
     if (!window)
     {
         glfwTerminate();
@@ -104,6 +104,7 @@ int main()
     glfwSwapInterval(1);
 
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
+    std::vector<GLuint> itemTextures = loadTextures(itemTex);
 
     // Setup 2D projection
     glMatrixMode(GL_PROJECTION);
@@ -113,8 +114,6 @@ int main()
 
     Manager::Init(window);
     Image::Init();
-
-    player.texture = Image::Load("assets/agent-bullet.png");
 
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
@@ -143,7 +142,7 @@ int main()
             ++i;
         }
 
-        Image::Draw(player.texture, player.pos, 150, 0.0);
+        Image::Draw(player.texture, player.pos, 150);
 
         if (running) {
             // Game Running
@@ -181,9 +180,9 @@ int main()
                 t.id = tile;
 
                 if (selectMode == 0) {
-                    Image::Draw(tileTextures[tile], t.pos, 32, 0.0);
+                    Image::Draw(tileTextures[tile], t.pos, 32);
                 } else {
-                    Image::Draw(deleteTex, t.pos, 32, 0.0);
+                    Image::Draw(deleteTex, t.pos, 32);
                 }
                     
 
@@ -208,7 +207,7 @@ int main()
         } else {
             // Game Paused
 
-            Image::Draw(pause, camera.pos, 1500, 0.0);
+            Image::Draw(pause, camera.pos, 1500);
 
         }
 
