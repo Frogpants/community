@@ -16,8 +16,6 @@ LDFLAGS = -lglfw -lGL -lGLU -ldl -lpthread
 
 all: $(TARGET)
 
-
-
 $(TARGET): $(SRC)
 ifeq ($(UNAME_S),Darwin)
 	bash build_macos.sh
