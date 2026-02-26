@@ -8,7 +8,7 @@
 
 inline float gamemode = 0.0f;
 
-inline vec2 screen = vec2(1280.0, 720.0);
+inline vec2 screen = vec2(2560.0, 1440.0);
 
 // namespace KeyMaps {
 //     inline controls = 

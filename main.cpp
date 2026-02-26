@@ -36,6 +36,7 @@ Camera camera;
 std::vector<Character> characters;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
+std::vector<std::string> itemTex = grabFiles("dist/assets/items");
 
 // Game Control Variables
 
@@ -102,13 +103,7 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
-    std::vector<GLuint> tileTextures;
-
-    for (const std::string& path : tileTex)
-    {
-        GLuint img = Image::Load(path.c_str());
-        tileTextures.push_back(img);
-    }
+    std::vector<GLuint> tileTextures = loadTextures(tileTex);
 
     // Setup 2D projection
     glMatrixMode(GL_PROJECTION);
@@ -121,7 +116,7 @@ int main()
 
     player.texture = Image::Load("assets/agent-bullet.png");
 
-    GLuint pause = Image::Load("assets/pause.png");
+    GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
 
     while (!glfwWindowShouldClose(window)) {
@@ -213,7 +208,7 @@ int main()
         } else {
             // Game Paused
 
-            Image::Draw(pause, camera.pos, 250, 0.0);
+            Image::Draw(pause, camera.pos, 1500, 0.0);
 
         }
 

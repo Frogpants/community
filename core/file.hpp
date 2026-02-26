@@ -73,3 +73,14 @@ bool isEmpty(const std::string& filename)
 
     return std::filesystem::file_size(filename) == 0;
 }
+
+std::vector<GLuint> loadTextures(std::vector<std::string> files) {
+    std::vector<GLuint> textures;
+    for (const std::string& path : files)
+    {
+        GLuint img = Image::Load(path.c_str());
+        textures.push_back(img);
+    }
+
+    return textures;
+}
