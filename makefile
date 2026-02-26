@@ -23,9 +23,6 @@ else
 	bash build.sh
 endif
 
-clean:
-	bash init.sh
-
 run:
 	$(RUN_TARGET)
 
