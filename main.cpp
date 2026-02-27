@@ -58,8 +58,8 @@ void DrawHealthBar(float health)
 
     float hpPercent = health / 100.0f;
 
-    Image::DrawRect(vec2(-screen.x + 20, screen.y - 40), vec2(width, height), 1, 0, 0);
-    Image::DrawRect(vec2(-screen.x + 20, screen.y - 40), vec2(width * hpPercent, height), 0, 1, 0);
+    Image::DrawRect(vec2(-screen.x + 30, screen.y - 40), vec2(width, height), 1, 0, 0);
+    Image::DrawRect(vec2(-screen.x + 30, screen.y - 40), vec2(width * hpPercent, height), 0, 1, 0);
 }
 
 

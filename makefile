@@ -16,10 +16,8 @@ LDFLAGS = -lglfw -lGL -lGLU -ldl -lpthread
 
 all: $(TARGET)
 
-# clean:
-# 	rm -rf dist
-# 	rm -rf glfw
-# 	git clone https://github.com/glfw/glfw.git
+clean:
+	bash init.sh
 
 $(TARGET): $(SRC)
 ifeq ($(UNAME_S),Darwin)
