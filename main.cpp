@@ -92,11 +92,12 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
     std::vector<GLuint> heartTextures = loadTextures(heartTex);
 
-    // Setup 2D projection
+
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho(-screen.x, screen.x, -screen.y, screen.y, -1.0, 1.0);
@@ -105,11 +106,13 @@ int main()
     Manager::Init(window);
     Image::Init();
 
-    // Load textures for player and characters now that OpenGL context exists
+
+
     player.texture = Image::Load("assets/agent-bullet.png");
     
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
+    GLuint selectTex = Image::Load("assets/interact-select.png");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -178,7 +181,6 @@ int main()
                     Image::Draw(deleteTex, t.pos, 32);
                 }
                     
-
                 if (Mouse::IsPressed(0)) {
                     if (selectMode == 0) {
                         tiles.push_back(t);
@@ -194,6 +196,8 @@ int main()
 
                 player.controls();
                 player.pos = player.pos + player.vel;
+
+                Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }
 
             player.health = clamp(0.0, 100.0, player.health);
