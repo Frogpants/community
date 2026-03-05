@@ -18,7 +18,7 @@ struct Player {
 
     float cooldown = 0.0;
 
-    float speed = 0.3;
+    float speed = 0.2;
 
     void controls() {
         if (Input::IsDown("w")) {

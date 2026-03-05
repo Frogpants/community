@@ -37,6 +37,7 @@ std::vector<Character> characters;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
 std::vector<std::string> itemTex = grabFiles("dist/assets/items");
+std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
 
 // Game Control Variables
 
@@ -49,18 +50,6 @@ int selected = 0;
 int tile = 0;
 
 int running = 1;
-
-
-void DrawHealthBar(float health)
-{
-    float width = 200.0f;
-    float height = 20.0f;
-
-    float hpPercent = health / 100.0f;
-
-    Image::DrawRect(vec2(-screen.x + 30, screen.y - 40), vec2(width, height), 1, 0, 0);
-    Image::DrawRect(vec2(-screen.x + 30, screen.y - 40), vec2(width * hpPercent, height), 0, 1, 0);
-}
 
 
 vec2 GetMouseWorld(GLFWwindow* window) {
@@ -93,7 +82,7 @@ int main()
     if (!glfwInit())
         return -1;
 
-    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Project Oasis", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(screen.x, screen.y, "Community", nullptr, nullptr);
     if (!window)
     {
         glfwTerminate();
@@ -105,6 +94,7 @@ int main()
 
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
+    std::vector<GLuint> heartTextures = loadTextures(heartTex);
 
     // Setup 2D projection
     glMatrixMode(GL_PROJECTION);
@@ -216,11 +206,22 @@ int main()
 
         // UI
         glLoadIdentity();
-        DrawHealthBar(player.health);
+        
+        for (int i = 0; i < 9; ++i) {
+            float perc = (player.health/100.0) - (i * 0.1);
+            GLuint tex;
+            if (perc >= 0.1) {
+                tex = heartTextures[0];
+            } else if (perc >= 0.05) {
+                tex = heartTextures[2];
+            } else {
+                tex = heartTextures[1];
+            }
+            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 40), 32);
+        }
 
         if(Input::IsPressed("escape")) {
             running = 1 - running;
-            //break;
         }
 
         Manager::Update();
