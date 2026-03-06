@@ -26,6 +26,7 @@
 #include "core/essentials.hpp"
 #include "core/collision.hpp"
 #include "core/images/image.hpp"
+#include "core/images/stb_image.h"
 #include "core/file.hpp"
 
 
@@ -49,7 +50,27 @@ int selectMode = 0;
 int selected = 0;
 int tile = 0;
 
+float zoom = 0.5f;
+
 int running = 1;
+
+
+std::vector<Tile> genWorld(vec2 dim) {
+    std::vector<Tile> ts; // Nora shhhhh
+    Tile t;
+    for (int x = 0; x < dim.x; ++x) {
+        for (int y = 0; y < dim.y; ++y) {
+            if (randInt(0, 1) == 0) {
+                t.id = 0;
+            } else {
+                t.id = randInt(5, 6);
+            }
+            t.pos = snap(vec2(x*64, y*64), 64.0);
+            ts.push_back(t);
+        }
+    }
+    return ts;
+}
 
 
 vec2 GetMouseWorld(GLFWwindow* window) {
@@ -58,13 +79,11 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     int windowWidth, windowHeight;
     glfwGetWindowSize(window, &windowWidth, &windowHeight);
 
-    // Normalize mouse coordinates to -screen.x → screen.x and -screen.y → screen.y
-    float mouseNDC_X = (float)Mouse::X() / windowWidth;  // 0 → 1
-    float mouseNDC_Y = (float)Mouse::Y() / windowHeight; // 0 → 1
+    float mouseNDC_X = (float)Mouse::X() / windowWidth;
+    float mouseNDC_Y = (float)Mouse::Y() / windowHeight;
 
-    // Convert to ortho coordinates
-    world.x = (mouseNDC_X * 2.0f - 1.0f) * screen.x + camera.pos.x;
-    world.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y + camera.pos.y;
+    world.x = (mouseNDC_X * 2.0f - 1.0f) * screen.x * zoom + camera.pos.x;
+    world.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y * zoom + camera.pos.y;
 
     return world;
 }
@@ -72,10 +91,10 @@ vec2 GetMouseWorld(GLFWwindow* window) {
 
 int main()
 {
-    std::vector<Tile> tiles;
-    if (!isEmpty("game/data/map.dat")) {
-        tiles = load("game/data/map.dat");
-    }
+    std::vector<Tile> tiles = genWorld(vec2(100,100));
+    // if (!isEmpty("game/data/map.dat")) {
+    //     tiles = load("game/data/map.dat");
+    // }
     
     srand((unsigned int)time(nullptr));
 
@@ -89,6 +108,18 @@ int main()
         return -1;
     }
 
+    // Load and set window icon
+    int iconWidth, iconHeight, iconChannels;
+    unsigned char* iconPixels = stbi_load("assets/icon.png", &iconWidth, &iconHeight, &iconChannels, 4);
+    if (iconPixels) {
+        GLFWimage icon;
+        icon.width = iconWidth;
+        icon.height = iconHeight;
+        icon.pixels = iconPixels;
+        glfwSetWindowIcon(window, 1, &icon);
+        stbi_image_free(iconPixels);
+    }
+
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
@@ -100,7 +131,7 @@ int main()
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-screen.x, screen.x, -screen.y, screen.y, -1.0, 1.0);
+    glOrtho(-screen.x * zoom, screen.x * zoom, -screen.y * zoom, screen.y * zoom, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 
     Manager::Init(window);
@@ -126,9 +157,10 @@ int main()
 
         vec2 mouse = GetMouseWorld(window);
         int i = 0;
+        selected = -1;
         for (const Tile& t : tiles) {
-            if (abs(t.pos.x - camera.pos.x) < screen.x) {
-                if (abs(t.pos.y - camera.pos.y) < screen.y) {
+            if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) * zoom) {
+                if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) * zoom) {
                     Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
                     if (BoxCollide(mouse, vec2(0.0), t.pos, vec2(32.0))) {
                         selected = i;
@@ -138,10 +170,7 @@ int main()
             ++i;
         }
 
-        Image::Draw(player.texture, player.pos, 150);
-
         if (running) {
-            // Game Running
             tick += 1;
 
             if(Input::IsPressed("0")) {
@@ -151,7 +180,6 @@ int main()
             if (mode) {
                 camera.controls();
 
-
                 if (Input::IsPressed("1")) {
                     selectMode = 0;
                 }
@@ -159,7 +187,6 @@ int main()
                 if (Input::IsPressed("2")) {
                     selectMode = 1;
                 }
-
 
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
@@ -185,11 +212,24 @@ int main()
                     if (selectMode == 0) {
                         tiles.push_back(t);
                     } else {
-                        tiles.erase(tiles.begin() + selected);
+                        if (selected != -1) {
+                            tiles.erase(tiles.begin() + selected);
+                        }
+                    }
+
+                    save(tiles, "game/data/map.dat");
+                } else if (Mouse::IsDown(1)) {
+                    if (selectMode == 0) {
+                        tiles.push_back(t);
+                    } else {
+                        if (selected != -1) {
+                            tiles.erase(tiles.begin() + selected);
+                        }
                     }
 
                     save(tiles, "game/data/map.dat");
                 }
+
             } else {
                 camera.target = player.pos;
                 camera.follow();
@@ -208,6 +248,8 @@ int main()
 
         }
 
+        Image::Draw(player.texture, player.pos, 150);
+
         // UI
         glLoadIdentity();
         
@@ -221,7 +263,7 @@ int main()
             } else {
                 tex = heartTextures[1];
             }
-            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 40), 32);
+            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 32);
         }
 
         if(Input::IsPressed("escape")) {

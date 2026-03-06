@@ -56,5 +56,5 @@ fi
 
 echo "======================================"
 echo "Build complete"
-echo "Executable located at: $DIST_DIR/$EXE_NAME"
+echo "Run make run to run executable"
 echo "======================================"
