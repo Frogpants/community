@@ -28,14 +28,10 @@ struct Player {
     void addTask(std::vector<std::string>& ts) {
         int t = randInt(0, ts.size() - 1);
         std::string task = ts[t];
-        for (const auto& item : tasks) {
-            if (task != item) {
-                break;
-            }
-            int t = randInt(0, ts.size() - 1);
-            std::string task = ts[t];
+
+        if (std::find(tasks.begin(), tasks.end(), task) == tasks.end()) {
+            tasks.push_back(task);
         }
-        tasks.push_back(task);
     }
 
     void controls() {
@@ -53,7 +49,6 @@ struct Player {
         }
 
         vel = vel * 0.7;
-
 
         if (std::abs(pos.x) > screen.x + screen.x*0.5) {
             vel.x = 0.0;

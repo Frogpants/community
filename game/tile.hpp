@@ -20,8 +20,7 @@ inline int indexOf(const std::vector<Tile>& tiles, const vec2& pos)
 {
     for (int i = 0; i < (int)tiles.size(); i++)
     {
-        if (tiles[i].pos.x == pos.x &&
-            tiles[i].pos.y == pos.y)
+        if (tiles[i].pos.x == pos.x && tiles[i].pos.y == pos.y)
         {
             return i;
         }
