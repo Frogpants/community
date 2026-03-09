@@ -31,7 +31,7 @@ elif command -v pkg-config >/dev/null 2>&1 && pkg-config --exists glfw3; then
     echo "Using pkg-config GLFW"
     PKG_CFLAGS=$(pkg-config --cflags glfw3)
     PKG_LIBS=$(pkg-config --libs glfw3)
-    FLAGS="$PKG_CFLAGS $PKG_LIBS"
+    FLAGS="$PKG_CFLAGS $PKG_LIBS -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo"
 
 else
     echo "Using system GLFW fallback"
