@@ -21,6 +21,7 @@
 #include "game/character.hpp"
 #include "game/camera.hpp"
 #include "game/tile.hpp"
+#include "game/task.hpp"
 
 #include "core/manager.hpp"
 #include "core/essentials.hpp"
@@ -37,6 +38,7 @@ Camera camera;
 Character character;
 
 std::vector<Character> characters;
+std::vector<Task> objectives;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
 std::vector<std::string> itemTex = grabFiles("dist/assets/items");
@@ -44,7 +46,7 @@ std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
 
 // Game Control Variables
 
-int tick = 0;
+int tick = 1;
 
 bool editor = false;
 int mode = 0;
@@ -90,6 +92,14 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     return world;
 }
 
+void addTask(std::vector<std::string>& ts) {
+    int t = randInt(0, ts.size() - 1);
+    Task task;
+    task.id = t;
+    task.pos = vec2(float(randInt(0, 800)), float(randInt(0, 800)));
+    objectives.push_back(task);
+}
+
 
 int main()
 {
@@ -97,6 +107,10 @@ int main()
     // if (!isEmpty("game/data/map.dat")) {
     //     tiles = load("game/data/map.dat");
     // }
+
+    for (int i = 0; i < 3; ++i) {
+        addTask(character.tasks);
+    }
     
     srand((unsigned int)time(nullptr));
 
@@ -139,12 +153,12 @@ int main()
     Manager::Init(window);
     Image::Init();
 
-
-
     player.texture = Image::Load("assets/agent-bullet.png");
     character.texture = Image::Load("assets/npcs/character.png");
     character.pos = vec2(300.0, 0.0);
     
+    
+    GLuint taskTex = Image::Load("assets/box.png");
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
     GLuint selectTex = Image::Load("assets/interact-select.png");
@@ -242,18 +256,6 @@ int main()
                 player.pos = player.pos + player.vel;
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
-
-                if (BoxCollide(player.pos, player.dim, character.pos, character.dim)) {
-                    if (Input::IsPressed("e")) {
-                        player.addTask(character.tasks);
-                        std::cout << "Vector elements: ";
-                        // Iterate over each element in the 'cars' vector
-                        for (const auto& t : player.tasks) {
-                            std::cout << t << " ";
-                        }
-                        std::cout << std::endl;
-                    }
-                }
             }
 
             player.health = clamp(0.0, 100.0, player.health);
@@ -262,6 +264,10 @@ int main()
 
             Image::Draw(pause, camera.pos, 1500);
 
+        }
+
+        for (const Task& t : objectives) {
+            Image::Draw(taskTex, t.pos, 45.0);
         }
 
         Image::Draw(player.texture, player.pos, 150);

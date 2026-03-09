@@ -25,15 +25,6 @@ struct Player {
 
     std::vector<std::string> tasks;
 
-    void addTask(std::vector<std::string>& ts) {
-        int t = randInt(0, ts.size() - 1);
-        std::string task = ts[t];
-
-        if (std::find(tasks.begin(), tasks.end(), task) == tasks.end()) {
-            tasks.push_back(task);
-        }
-    }
-
     void controls() {
         if (Input::IsDown("w")) {
             vel.y += speed;
