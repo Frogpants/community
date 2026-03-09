@@ -34,6 +34,8 @@
 
 Player player;
 Camera camera;
+Character character;
+
 std::vector<Character> characters;
 
 std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
@@ -140,6 +142,7 @@ int main()
 
 
     player.texture = Image::Load("assets/agent-bullet.png");
+    character.texture = Image::Load("assets/npcs/character.png");
     
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
@@ -199,7 +202,7 @@ int main()
                     tile -= 1;
                 }
 
-                tile = std::clamp(tile, 0, (int)tileTextures.size() - 1);
+                tile = clamp(tile, 0, (int)tileTextures.size() - 1);
                 t.id = tile;
 
                 if (selectMode == 0) {
@@ -249,6 +252,7 @@ int main()
         }
 
         Image::Draw(player.texture, player.pos, 150);
+        Image::Draw(character.texture, character.pos, 150);
 
         // UI
         glLoadIdentity();

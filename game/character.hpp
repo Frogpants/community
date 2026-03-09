@@ -14,7 +14,7 @@ struct Character {
     vec2 dim = vec2(45.0);
     float health = 100.0;
 
-    GLuint texture = 0;  // Will be loaded after GLFW initialization
+    GLuint texture = 0;
 
     float cooldown = 0.0;
 
