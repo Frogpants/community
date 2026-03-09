@@ -242,6 +242,18 @@ int main()
                 player.pos = player.pos + player.vel;
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
+
+                if (BoxCollide(player.pos, player.dim, character.pos, character.dim)) {
+                    if (Input::IsPressed("e")) {
+                        player.addTask(character.tasks);
+                        std::cout << "Vector elements: ";
+                        // Iterate over each element in the 'cars' vector
+                        for (const auto& t : player.tasks) {
+                            std::cout << t << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+                }
             }
 
             player.health = clamp(0.0, 100.0, player.health);

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vector>
+
 #include "../core/essentials.hpp"
 #include "../core/manager.hpp"
 #include "../core/images/image.hpp"
 #include "camera.hpp"
+
 
 struct Player {
     vec2 pos = vec2(0.0);
@@ -19,6 +22,21 @@ struct Player {
     float cooldown = 0.0;
 
     float speed = 0.2;
+
+    std::vector<std::string> tasks;
+
+    void addTask(std::vector<std::string>& ts) {
+        int t = randInt(0, ts.size() - 1);
+        std::string task = ts[t];
+        for (const auto& item : tasks) {
+            if (task != item) {
+                break;
+            }
+            int t = randInt(0, ts.size() - 1);
+            std::string task = ts[t];
+        }
+        tasks.push_back(task);
+    }
 
     void controls() {
         if (Input::IsDown("w")) {
