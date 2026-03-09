@@ -65,9 +65,9 @@ std::vector<Tile> genWorld(vec2 dim) {
     for (int x = 0; x < dim.x; ++x) {
         for (int y = 0; y < dim.y; ++y) {
             if (randInt(0, 1) == 0) {
-                t.id = 0;
+                t.id = 1;
             } else {
-                t.id = randInt(5, 6);
+                t.id = randInt(2, 3);
             }
             t.pos = snap(vec2(x*64, y*64), 64.0);
             ts.push_back(t);
