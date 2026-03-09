@@ -103,6 +103,8 @@ void addTask(std::vector<std::string>& ts) {
 
 int main()
 {
+    srand((unsigned int)time(nullptr));
+    
     std::vector<Tile> tiles = genWorld(vec2(100,100));
     // if (!isEmpty("game/data/map.dat")) {
     //     tiles = load("game/data/map.dat");
@@ -111,8 +113,6 @@ int main()
     for (int i = 0; i < 3; ++i) {
         addTask(character.tasks);
     }
-    
-    srand((unsigned int)time(nullptr));
 
     if (!glfwInit())
         return -1;
