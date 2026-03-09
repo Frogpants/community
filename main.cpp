@@ -143,6 +143,7 @@ int main()
 
     player.texture = Image::Load("assets/agent-bullet.png");
     character.texture = Image::Load("assets/npcs/character.png");
+    character.pos = vec2(300.0, 0.0);
     
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");

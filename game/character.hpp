@@ -22,6 +22,12 @@ struct Character {
 
     vec2 target;
 
+    std::string name = "Character";
+
+    int level = 0;
+
+    std::vector<std::string> tasks = {"wash dishes", "take out trash", "do laundry"}; //Tasks might be changed later!
+
     std::vector<vec2> positions = {};
 
     void follow() {
