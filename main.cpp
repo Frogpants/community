@@ -139,6 +139,8 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+    Manager::Init(window);
+    Image::Init();
 
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
@@ -149,9 +151,6 @@ int main()
     glLoadIdentity();
     glOrtho(-screen.x * zoom, screen.x * zoom, -screen.y * zoom, screen.y * zoom, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
-
-    Manager::Init(window);
-    Image::Init();
 
     player.texture = Image::Load("assets/agent-bullet.png");
     character.texture = Image::Load("assets/npcs/character.png");

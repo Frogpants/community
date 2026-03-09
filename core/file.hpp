@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -22,6 +23,9 @@ inline std::vector<std::string> grabFiles(const std::string& folderPath) {
             files.push_back(fullPath.string());
         }
     }
+
+    // Sort files alphabetically for consistent ordering across platforms
+    std::sort(files.begin(), files.end());
 
     return files;
 }
