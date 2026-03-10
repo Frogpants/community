@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <string>
 
 #include "game/player.hpp"
 #include "game/character.hpp"
@@ -28,6 +29,7 @@
 #include "core/collision.hpp"
 #include "core/images/image.hpp"
 #include "core/images/stb_image.h"
+#include "core/text.hpp"
 #include "core/file.hpp"
 
 
@@ -54,7 +56,7 @@ int selectMode = 0;
 int selected = 0;
 int tile = 0;
 
-float zoom = 0.5f;
+float zoom = 2.0;
 
 int running = 1;
 
@@ -86,8 +88,8 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     float mouseNDC_X = (float)Mouse::X() / windowWidth;
     float mouseNDC_Y = (float)Mouse::Y() / windowHeight;
 
-    world.x = (mouseNDC_X * 2.0f - 1.0f) * screen.x * zoom + camera.pos.x;
-    world.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y * zoom + camera.pos.y;
+    world.x = (mouseNDC_X * 2.0f - 1.0f) * screen.x / zoom + camera.pos.x;
+    world.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y / zoom + camera.pos.y;
 
     return world;
 }
@@ -162,6 +164,9 @@ int main()
 
     Manager::Init(window);
     Image::Init();
+    if (!Text::Init()) {
+        std::cout << "Failed to initialize text glyph textures." << std::endl;
+    }
 
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
@@ -170,7 +175,7 @@ int main()
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-screen.x * zoom, screen.x * zoom, -screen.y * zoom, screen.y * zoom, -1.0, 1.0);
+    glOrtho(-screen.x / zoom, screen.x / zoom, -screen.y / zoom, screen.y / zoom, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 
     player.texture = Image::Load("assets/agent-bullet.png");
@@ -197,8 +202,8 @@ int main()
         int i = 0;
         selected = -1;
         for (const Tile& t : tiles) {
-            if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) * zoom) {
-                if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) * zoom) {
+            if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) / zoom) {
+                if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) / zoom) {
                     Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
                     if (BoxCollide(mouse, vec2(0.0), t.pos, vec2(32.0))) {
                         selected = i;
@@ -296,12 +301,15 @@ int main()
             Image::Draw(pause, camera.pos, 1500);
         }
 
+        int id = 0;
         for (const Task& t : objectives) {
             if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
                 if (Input::IsPressed("e")) {
-                    objectives.erase(objectives.begin() + t.id);
+                    objectives.erase(objectives.begin() + id);
+                    player.tasks.erase(player.tasks.begin() + id);
                 }
             }
+            ++id;
             Image::Draw(taskTex, t.pos, 45.0);
         }
 
@@ -315,13 +323,30 @@ int main()
             float perc = (player.health/100.0) - (i * 0.1);
             GLuint tex;
             if (perc >= 0.1) {
-                tex = heartTextures[0];
+                tex = heartTextures[1];
             } else if (perc >= 0.05) {
                 tex = heartTextures[2];
             } else {
-                tex = heartTextures[1];
+                tex = heartTextures[0];
             }
-            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 32);
+            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
+        }
+
+        std::string healthText = "health " + std::to_string(static_cast<int>(player.health));
+        Text::DrawString(healthText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
+
+        std::string taskText = "tasks " + std::to_string(player.tasks.size());
+        Text::DrawStringRight(taskText, vec2(screen.x - 40, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
+
+        float y = 112.0;
+        for (const std::string& t : player.tasks) {
+            taskText = "- " + t;
+            Text::DrawStringRight(taskText, vec2(screen.x - 40, screen.y - y) / zoom, 24.0f / zoom, 1.5f);
+            y += 64.0;
+        }
+
+        if (!running) {
+            Text::DrawStringCentered("paused", vec2(0.0f, screen.y - 90.0f) / zoom, 40.0f / zoom, 1.5f);
         }
 
         if(Input::IsPressed("escape")) {
