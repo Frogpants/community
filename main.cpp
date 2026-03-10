@@ -335,13 +335,13 @@ int main()
         std::string healthText = "health " + std::to_string(static_cast<int>(player.health));
         Text::DrawString(healthText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
-        std::string taskText = "tasks " + std::to_string(player.tasks.size());
-        Text::DrawStringRight(taskText, vec2(screen.x - 40, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
+        std::string taskText = "objectives " + std::to_string(player.tasks.size());
+        Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
 
         float y = 112.0;
         for (const std::string& t : player.tasks) {
             taskText = "- " + t;
-            Text::DrawStringRight(taskText, vec2(screen.x - 40, screen.y - y) / zoom, 24.0f / zoom, 1.5f);
+            Text::DrawString(taskText, vec2(screen.x - 600, screen.y - y) / zoom, 24.0f / zoom, 1.5f);
             y += 64.0;
         }
 
