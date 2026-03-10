@@ -120,7 +120,7 @@ int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& 
     int t = availableTaskIds[choice];
     Task task;
     task.id = t;
-    task.pos = vec2(float(randInt(0, 800)), float(randInt(0, 800)));
+    task.pos = GetTaskSpawnPosition(ts[t], t);
     objectives.push_back(task);
     return t;
 }
