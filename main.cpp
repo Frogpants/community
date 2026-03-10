@@ -71,7 +71,7 @@ std::vector<Tile> genWorld(vec2 dim) {
             } else {
                 t.id = randInt(2, 3);
             }
-            t.pos = snap(vec2(x*64, y*64), 64.0);
+            t.pos = snap(vec2((x - dim.x/2.0)*64, (y - dim.y/2.0)*64), 64.0);
             ts.push_back(t);
         }
     }
@@ -132,7 +132,7 @@ int main()
 {
     srand((unsigned int)time(nullptr));
     
-    std::vector<Tile> tiles = genWorld(vec2(100,100));
+    std::vector<Tile> tiles = genWorld(vec2(120,100));
     // if (!isEmpty("game/data/map.dat")) {
     //     tiles = load("game/data/map.dat");
     // }
