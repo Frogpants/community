@@ -94,6 +94,20 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     return world;
 }
 
+void windowResizeCallback(GLFWwindow* window, int width, int height) {
+    // Update the screen variable with new dimensions
+    screen = vec2(width, height);
+    
+    // Update the OpenGL viewport
+    glViewport(0, 0, width, height);
+    
+    // Update the projection matrix with new dimensions
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(-screen.x / zoom, screen.x / zoom, -screen.y / zoom, screen.y / zoom, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+}
+
 int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& ownedTasks) {
     if (ts.empty()) {
         return -1;
@@ -161,6 +175,14 @@ int main()
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
+
+    // Register window resize callback
+    glfwSetWindowSizeCallback(window, windowResizeCallback);
+    
+    // Initialize screen variable with actual window size
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(window, &windowWidth, &windowHeight);
+    screen = vec2(windowWidth, windowHeight);
 
     Manager::Init(window);
     Image::Init();
