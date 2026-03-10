@@ -203,6 +203,7 @@ int main()
     player.texture = Image::Load("assets/agent-bullet.png");
     character.texture = Image::Load("assets/npcs/character.png");
     character.pos = vec2(300.0, 0.0);
+    character.roamCenter = character.pos; // Set roam center to initial position
     
     
     GLuint taskTex = Image::Load("assets/box.png");
@@ -313,6 +314,15 @@ int main()
                     }
                 }
 
+                // Character starts roaming when at max level (90)
+                if (character.level >= 90) {
+                    character.isRoaming = true;
+                }
+
+                if (character.isRoaming) {
+                    character.roam();
+                }
+
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }
 
@@ -329,7 +339,7 @@ int main()
                 if (Input::IsPressed("e")) {
                     objectives.erase(objectives.begin() + id);
                     player.tasks.erase(player.tasks.begin() + id);
-                    character.level += 10;
+                    character.level += 30;
                 }
             }
             ++id;
