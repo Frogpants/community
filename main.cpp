@@ -329,6 +329,7 @@ int main()
                 if (Input::IsPressed("e")) {
                     objectives.erase(objectives.begin() + id);
                     player.tasks.erase(player.tasks.begin() + id);
+                    character.level += 10;
                 }
             }
             ++id;
@@ -342,7 +343,7 @@ int main()
         glLoadIdentity();
         
         for (int i = 0; i < 9; ++i) {
-            float perc = (player.health/100.0) - (i * 0.1);
+            float perc = (character.level/90.0) - (i * 0.1);
             GLuint tex;
             if (perc >= 0.1) {
                 tex = heartTextures[1];
@@ -354,8 +355,8 @@ int main()
             Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
-        std::string healthText = "health " + std::to_string(static_cast<int>(player.health));
-        Text::DrawString(healthText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
+        std::string levelText = "level " + std::to_string(character.level);
+        Text::DrawString(levelText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
