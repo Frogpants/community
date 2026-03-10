@@ -298,7 +298,7 @@ int main()
         } else {
             // Game Paused
 
-            Image::Draw(pause, camera.pos, 1500);
+            //Image::Draw(pause, camera.pos, 1500);
         }
 
         int id = 0;
