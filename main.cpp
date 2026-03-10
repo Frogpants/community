@@ -92,12 +92,37 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     return world;
 }
 
-void addTask(std::vector<std::string>& ts) {
-    int t = randInt(0, ts.size() - 1);
+int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& ownedTasks) {
+    if (ts.empty()) {
+        return -1;
+    }
+
+    std::vector<int> availableTaskIds;
+    for (int i = 0; i < static_cast<int>(ts.size()); ++i) {
+        bool alreadyOwned = false;
+        for (const std::string& owned : ownedTasks) {
+            if (owned == ts[i]) {
+                alreadyOwned = true;
+                break;
+            }
+        }
+
+        if (!alreadyOwned) {
+            availableTaskIds.push_back(i);
+        }
+    }
+
+    if (availableTaskIds.empty()) {
+        return -1;
+    }
+
+    int choice = randInt(0, static_cast<int>(availableTaskIds.size()) - 1);
+    int t = availableTaskIds[choice];
     Task task;
     task.id = t;
     task.pos = vec2(float(randInt(0, 800)), float(randInt(0, 800)));
     objectives.push_back(task);
+    return t;
 }
 
 
@@ -109,10 +134,6 @@ int main()
     // if (!isEmpty("game/data/map.dat")) {
     //     tiles = load("game/data/map.dat");
     // }
-
-    for (int i = 0; i < 3; ++i) {
-        addTask(character.tasks);
-    }
 
     if (!glfwInit())
         return -1;
@@ -253,6 +274,17 @@ int main()
 
                 player.controls();
                 player.pos = player.pos + player.vel;
+
+                if (BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
+                    int taskId = addTask(character.tasks, player.tasks);
+                    if (taskId != -1) {
+                        const std::string& taskName = character.tasks[taskId];
+                        player.tasks.push_back(taskName);
+                        std::cout << "Task added: " << taskName << std::endl;
+                    } else {
+                        std::cout << "All tasks completed. No more tasks available." << std::endl;
+                    }
+                }
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }
