@@ -237,7 +237,7 @@ int main()
                     tile -= 1;
                 }
 
-                tile = clamp(tile, 0, (int)tileTextures.size() - 1);
+                tile = std::clamp(tile, 0, (int)tileTextures.size() - 1);
                 t.id = tile;
 
                 if (selectMode == 0) {
@@ -298,6 +298,11 @@ int main()
         }
 
         for (const Task& t : objectives) {
+            if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
+                if (Input::IsPressed("e")) {
+                    objectives.erase(objectives.end() + t.id);
+                }
+            }
             Image::Draw(taskTex, t.pos, 45.0);
         }
 
