@@ -294,13 +294,12 @@ int main()
             // Game Paused
 
             Image::Draw(pause, camera.pos, 1500);
-
         }
 
         for (const Task& t : objectives) {
             if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
                 if (Input::IsPressed("e")) {
-                    objectives.erase(objectives.end() + t.id);
+                    objectives.erase(objectives.begin() + t.id);
                 }
             }
             Image::Draw(taskTex, t.pos, 45.0);
