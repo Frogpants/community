@@ -53,12 +53,14 @@ cp -r assets "$DIST_DIR/" 2>/dev/null || true
 # Copy local GLFW dylibs if using local build
 if [ "$USING_LOCAL_GLFW" = true ]; then
     echo "Copying local GLFW dylibs to $DIST_DIR"
-    cp -v glfw/build/src/libglfw*.dylib "$DIST_DIR/" || true
+    if ls glfw/build/src/libglfw*.dylib >/dev/null 2>&1; then
+        cp -v glfw/build/src/libglfw*.dylib "$DIST_DIR/"
+    fi
 
     cd "$DIST_DIR"
 
     # Automatically create expected compatibility symlink
-    REAL_DYLIB=$(ls libglfw.*.dylib | head -n 1 || true)
+    REAL_DYLIB=$(ls libglfw.*.dylib 2>/dev/null | head -n 1 || true)
 
     if [ -n "$REAL_DYLIB" ]; then
         echo "Creating compatibility symlink: libglfw.3.dylib -> $REAL_DYLIB"

@@ -1,6 +1,5 @@
 ### Commands
 
-
 ```bash
 # Initialize Project
 make clean
