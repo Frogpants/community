@@ -35,6 +35,7 @@ x86_64-w64-mingw32-g++ $SRC \
     -Lglfw/build/src \
     -lglfw3 \
     -lopengl32 \
+    -lws2_32 \
     -lgdi32 \
     -luser32 \
     -lkernel32 \

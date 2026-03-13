@@ -21,6 +21,7 @@
 #include "game/player.hpp"
 #include "game/character.hpp"
 #include "game/camera.hpp"
+#include "game/multiplayer.hpp"
 #include "game/tile.hpp"
 #include "game/task.hpp"
 
@@ -59,6 +60,27 @@ int tile = 0;
 float zoom = 2.0;
 
 int running = 1;
+
+std::string getEnvOrDefault(const char* key, const std::string& fallback) {
+    const char* value = std::getenv(key);
+    if (value == nullptr || value[0] == '\0') {
+        return fallback;
+    }
+    return std::string(value);
+}
+
+int getEnvIntOrDefault(const char* key, int fallback) {
+    const char* value = std::getenv(key);
+    if (value == nullptr || value[0] == '\0') {
+        return fallback;
+    }
+
+    try {
+        return std::stoi(value);
+    } catch (...) {
+        return fallback;
+    }
+}
 
 
 std::vector<Tile> genWorld(vec2 dim) {
@@ -211,6 +233,11 @@ int main()
     GLuint deleteTex = Image::Load("assets/delete.png");
     GLuint selectTex = Image::Load("assets/interact-select.png");
 
+    MultiplayerClient multiplayer;
+    multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", "localhost"), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
+    multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", "player" + std::to_string(randInt(1000, 9999))));
+    multiplayer.initOrJoin(getEnvOrDefault("COMMUNITY_ROOM_CODE", ""));
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -302,6 +329,7 @@ int main()
 
                 player.controls();
                 player.pos = player.pos + player.vel;
+                multiplayer.sync(player.pos, glfwGetTime());
 
                 if (BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
                     int taskId = addTask(character.tasks, player.tasks);
@@ -347,6 +375,7 @@ int main()
         }
 
         Image::Draw(player.texture, player.pos, 150);
+        multiplayer.drawRemotePlayers(player.texture);
         Image::Draw(character.texture, character.pos, 150);
 
         // UI
@@ -370,6 +399,8 @@ int main()
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
+
+        Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 180) / zoom, 20.0f / zoom, 1.5f);
 
         float y = 112.0;
         for (const std::string& t : player.tasks) {
