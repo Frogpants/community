@@ -9,6 +9,8 @@ struct Task {
     vec2 dim = vec2(45.0);
 
     int id = 0;
+
+    int room = 0;
 };
 
 inline vec2 GetTaskSpawnPosition(const std::string& taskName, int taskIndex) {
