@@ -60,6 +60,8 @@ int tile = 0;
 float zoom = 2.0;
 
 int running = 1;
+bool inMainMenu = true;
+bool multiplayerStarted = false;
 
 std::string getEnvOrDefault(const char* key, const std::string& fallback) {
     const char* value = std::getenv(key);
@@ -80,6 +82,22 @@ int getEnvIntOrDefault(const char* key, int fallback) {
     } catch (...) {
         return fallback;
     }
+}
+
+std::string getRandomUsername() {
+    const std::vector<std::string> adjectives = {
+        "brisk", "calm", "clever", "fuzzy", "gentle", "lucky", "mellow", "nimble", "quiet", "rapid", "sunny", "zesty"
+    };
+
+    const std::vector<std::string> nouns = {
+        "otter", "fox", "raven", "koala", "panda", "sparrow", "beaver", "lynx", "wolf", "badger", "falcon", "gecko"
+    };
+
+    int adjectiveIndex = randInt(0, static_cast<int>(adjectives.size()) - 1);
+    int nounIndex = randInt(0, static_cast<int>(nouns.size()) - 1);
+    int suffix = randInt(100, 999);
+
+    return adjectives[adjectiveIndex] + "-" + nouns[nounIndex] + std::to_string(suffix);
 }
 
 
@@ -114,6 +132,21 @@ vec2 GetMouseWorld(GLFWwindow* window) {
     world.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y / zoom + camera.pos.y;
 
     return world;
+}
+
+vec2 GetMouseUI(GLFWwindow* window) {
+    vec2 ui;
+
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(window, &windowWidth, &windowHeight);
+
+    float mouseNDC_X = static_cast<float>(Mouse::X()) / static_cast<float>(windowWidth);
+    float mouseNDC_Y = static_cast<float>(Mouse::Y()) / static_cast<float>(windowHeight);
+
+    ui.x = (mouseNDC_X * 2.0f - 1.0f) * screen.x / zoom;
+    ui.y = (1.0f - mouseNDC_Y * 2.0f) * screen.y / zoom;
+
+    return ui;
 }
 
 void windowResizeCallback(GLFWwindow* window, int width, int height) {
@@ -235,8 +268,8 @@ int main()
 
     MultiplayerClient multiplayer;
     multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", "localhost"), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
-    multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", "player" + std::to_string(randInt(1000, 9999))));
-    multiplayer.initOrJoin(getEnvOrDefault("COMMUNITY_ROOM_CODE", ""));
+    multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", getRandomUsername()));
+    std::string requestedRoomCode = getEnvOrDefault("COMMUNITY_ROOM_CODE", "");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -245,6 +278,36 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT);
 
         glLoadIdentity();
+
+        if (inMainMenu) {
+            vec2 mouseUI = GetMouseUI(window);
+            vec2 playCenter = vec2(0.0f, -80.0f);
+            vec2 playHalfSize = vec2(220.0f, 70.0f);
+            bool hoveringPlay = BoxCollide(playCenter, playHalfSize, mouseUI, vec2(0.0f));
+
+            Image::DrawRect(vec2(0.0f, 0.0f), vec2(screen.x / zoom, screen.y / zoom), 0.14f, 0.17f, 0.22f);
+            if (hoveringPlay) {
+                Image::DrawRect(playCenter, playHalfSize, 0.25f, 0.70f, 0.43f);
+            } else {
+                Image::DrawRect(playCenter, playHalfSize, 0.20f, 0.58f, 0.38f);
+            }
+
+            Text::DrawStringCentered("community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
+            Text::DrawStringCentered("play", playCenter - vec2(0.0f, 16.0f), 28.0f / zoom, 1.3f);
+            Text::DrawStringCentered("click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, 1.3f);
+
+            if (hoveringPlay && Mouse::IsPressed(0)) {
+                inMainMenu = false;
+                if (!multiplayerStarted) {
+                    multiplayer.initOrJoin(requestedRoomCode);
+                    multiplayerStarted = true;
+                }
+            }
+
+            Manager::Update();
+            glfwSwapBuffers(window);
+            continue;
+        }
 
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 

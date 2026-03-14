@@ -1,10 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../core/essentials.hpp"
@@ -21,83 +25,59 @@ struct RemotePlayer {
 
 class MultiplayerClient {
 public:
+    MultiplayerClient() = default;
+
+    ~MultiplayerClient() {
+        stopWorker();
+    }
+
+    MultiplayerClient(const MultiplayerClient&) = delete;
+    MultiplayerClient& operator=(const MultiplayerClient&) = delete;
+
     void setServer(const std::string& hostValue, int portValue) {
+        std::lock_guard<std::mutex> lock(stateMutex);
         host = hostValue;
         port = portValue;
     }
 
     void setPlayerName(const std::string& value) {
+        std::lock_guard<std::mutex> lock(stateMutex);
         playerName = sanitizeName(value);
     }
 
     bool initOrJoin(const std::string& roomCodeOverride) {
-        roomCode.clear();
-        connected = false;
-        statusText = "multiplayer offline";
+        stopWorker();
 
-        if (playerName.empty()) {
-            statusText = "missing player name";
-            return false;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            requestedRoomCode = roomCodeOverride;
+            roomCode.clear();
+            connected = false;
+            remotes.clear();
+            statusText = "connecting...";
         }
 
-        Http::Response roomResponse;
-        if (roomCodeOverride.empty()) {
-            roomResponse = tryPostJson(
-                "/api/multiplayer/rooms",
-                std::string("{\"playerName\":\"") + escapeJson(playerName) + "\"}"
-            );
-        } else {
-            std::string roomPath = "/api/multiplayer/rooms/" + roomCodeOverride + "/join";
-            roomResponse = tryPostJson(
-                roomPath,
-                std::string("{\"playerName\":\"") + escapeJson(playerName) + "\"}"
-            );
-        }
-
-        if (roomResponse.statusCode < 200 || roomResponse.statusCode >= 300) {
-            statusText = "backend unavailable";
-            return false;
-        }
-
-        std::string parsedRoomCode = extractJsonString(roomResponse.body, "roomCode");
-        if (parsedRoomCode.empty()) {
-            statusText = "room join failed";
-            return false;
-        }
-
-        roomCode = parsedRoomCode;
-        connected = true;
-        statusText = "room " + roomCode;
-
+        stopRequested = false;
+        worker = std::thread(&MultiplayerClient::workerLoop, this);
         return true;
     }
 
     void sync(const vec2& localPos, double nowSeconds) {
-        if (!connected) {
-            return;
-        }
-
-        if (nowSeconds - lastPushTime >= 0.10) {
-            postPresence(localPos);
-            lastPushTime = nowSeconds;
-        }
-
-        if (nowSeconds - lastPollTime >= 0.10) {
-            pollPresence(nowSeconds);
-            lastPollTime = nowSeconds;
-        }
+        std::lock_guard<std::mutex> lock(stateMutex);
+        latestLocalPos = localPos;
 
         const double staleTimeout = 5.0;
         for (auto it = remotes.begin(); it != remotes.end();) {
             if (nowSeconds - it->second.lastSeenTime > staleTimeout) {
                 it = remotes.erase(it);
-                continue;
+            } else {
+                ++it;
             }
-            ++it;
         }
     }
 
     void drawRemotePlayers(GLuint sharedTexture) {
+        std::lock_guard<std::mutex> lock(stateMutex);
         for (const auto& entry : remotes) {
             const RemotePlayer& remote = entry.second;
             Image::Draw(sharedTexture, remote.pos, 150.0f);
@@ -105,46 +85,55 @@ public:
         }
     }
 
-    const std::string& getStatusText() const {
+    std::string getStatusText() const {
+        std::lock_guard<std::mutex> lock(stateMutex);
         return statusText;
     }
 
     bool isConnected() const {
+        std::lock_guard<std::mutex> lock(stateMutex);
         return connected;
     }
 
 private:
+    mutable std::mutex stateMutex;
+
     std::string host = "127.0.0.1";
     int port = 8080;
 
     std::string playerName;
+    std::string requestedRoomCode;
     std::string roomCode;
     std::string statusText = "multiplayer offline";
 
     bool connected = false;
-    double lastPushTime = 0.0;
-    double lastPollTime = 0.0;
+    vec2 latestLocalPos = vec2(0.0f);
 
     std::map<std::string, RemotePlayer> remotes;
 
-    std::vector<std::string> buildHostFallbacks() const {
-        std::vector<std::string> hosts;
-        hosts.push_back(host);
+    std::thread worker;
+    std::atomic<bool> stopRequested = false;
 
-        if (host == "localhost") {
+    Http::Response tryPostJson(const std::string& path, const std::string& jsonBody) const {
+        std::string currentHost;
+        int currentPort;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            currentHost = host;
+            currentPort = port;
+        }
+
+        Http::Response response;
+        std::vector<std::string> hosts;
+        hosts.push_back(currentHost);
+        if (currentHost == "localhost") {
             hosts.push_back("127.0.0.1");
-        } else if (host == "127.0.0.1") {
+        } else if (currentHost == "127.0.0.1") {
             hosts.push_back("localhost");
         }
 
-        return hosts;
-    }
-
-    Http::Response tryPostJson(const std::string& path, const std::string& jsonBody) const {
-        Http::Response response;
-        std::vector<std::string> hosts = buildHostFallbacks();
         for (const std::string& candidateHost : hosts) {
-            response = Http::PostJson(candidateHost, port, path, jsonBody);
+            response = Http::PostJson(candidateHost, currentPort, path, jsonBody);
             if (response.statusCode >= 200 && response.statusCode < 300) {
                 return response;
             }
@@ -154,16 +143,38 @@ private:
     }
 
     Http::Response tryGet(const std::string& path) const {
+        std::string currentHost;
+        int currentPort;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            currentHost = host;
+            currentPort = port;
+        }
+
         Http::Response response;
-        std::vector<std::string> hosts = buildHostFallbacks();
+        std::vector<std::string> hosts;
+        hosts.push_back(currentHost);
+        if (currentHost == "localhost") {
+            hosts.push_back("127.0.0.1");
+        } else if (currentHost == "127.0.0.1") {
+            hosts.push_back("localhost");
+        }
+
         for (const std::string& candidateHost : hosts) {
-            response = Http::Get(candidateHost, port, path);
+            response = Http::Get(candidateHost, currentPort, path);
             if (response.statusCode >= 200 && response.statusCode < 300) {
                 return response;
             }
         }
 
         return response;
+    }
+
+    void stopWorker() {
+        stopRequested = true;
+        if (worker.joinable()) {
+            worker.join();
+        }
     }
 
     static std::string sanitizeName(const std::string& raw) {
@@ -234,6 +245,10 @@ private:
         return json.substr(firstQuote + 1, endQuote - firstQuote - 1);
     }
 
+    static std::string extractFirstRoomCode(const std::string& json) {
+        return extractJsonString(json, "roomCode");
+    }
+
     static bool extractJsonNumber(const std::string& json, const std::string& key, double& value, std::size_t from = 0) {
         std::string token = "\"" + key + "\"";
         std::size_t keyPos = json.find(token, from);
@@ -274,31 +289,104 @@ private:
         return true;
     }
 
-    void postPresence(const vec2& localPos) {
+    bool tryConnectRoom() {
+        std::string localName;
+        std::string localRequestedRoom;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            localName = playerName;
+            localRequestedRoom = requestedRoomCode;
+        }
+
+        if (localName.empty()) {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            statusText = "missing player name";
+            return false;
+        }
+
+        std::string resolvedRoomToJoin = localRequestedRoom;
+        if (resolvedRoomToJoin.empty()) {
+            Http::Response listResponse = tryGet("/api/multiplayer/rooms?limit=1");
+            if (listResponse.statusCode >= 200 && listResponse.statusCode < 300) {
+                resolvedRoomToJoin = extractFirstRoomCode(listResponse.body);
+            }
+        }
+
+        Http::Response roomResponse;
+        if (resolvedRoomToJoin.empty()) {
+            roomResponse = tryPostJson(
+                "/api/multiplayer/rooms",
+                std::string("{\"playerName\":\"") + escapeJson(localName) + "\"}"
+            );
+        } else {
+            std::string roomPath = "/api/multiplayer/rooms/" + resolvedRoomToJoin + "/join";
+            roomResponse = tryPostJson(
+                roomPath,
+                std::string("{\"playerName\":\"") + escapeJson(localName) + "\"}"
+            );
+        }
+
+        if (roomResponse.statusCode < 200 || roomResponse.statusCode >= 300) {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            statusText = "backend unavailable (retrying)";
+            connected = false;
+            return false;
+        }
+
+        std::string parsedRoomCode = extractJsonString(roomResponse.body, "roomCode");
+        if (parsedRoomCode.empty()) {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            statusText = "room join failed (retrying)";
+            connected = false;
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(stateMutex);
+        roomCode = parsedRoomCode;
+        connected = true;
+        statusText = "room " + roomCode;
+        return true;
+    }
+
+    void postPresence(const vec2& localPos, const std::string& localRoomCode) {
+        std::string localName;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            localName = playerName;
+        }
+
         std::ostringstream body;
-        body << "{\"playerName\":\"" << escapeJson(playerName)
+        body << "{\"playerName\":\"" << escapeJson(localName)
              << "\",\"x\":" << localPos.x
              << ",\"y\":" << localPos.y << "}";
 
         Http::Response response = tryPostJson(
-            "/api/multiplayer/rooms/" + roomCode + "/presence",
+            "/api/multiplayer/rooms/" + localRoomCode + "/presence",
             body.str()
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
+            std::lock_guard<std::mutex> lock(stateMutex);
             connected = false;
-            statusText = "multiplayer disconnected";
+            statusText = "backend unavailable (retrying)";
         }
     }
 
-    void pollPresence(double nowSeconds) {
+    void pollPresence(const std::string& localRoomCode, double nowSeconds) {
+        std::string localName;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            localName = playerName;
+        }
+
         Http::Response response = tryGet(
-            "/api/multiplayer/rooms/" + roomCode + "/presence"
+            "/api/multiplayer/rooms/" + localRoomCode + "/presence"
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
+            std::lock_guard<std::mutex> lock(stateMutex);
             connected = false;
-            statusText = "multiplayer disconnected";
+            statusText = "backend unavailable (retrying)";
             return;
         }
 
@@ -345,7 +433,8 @@ private:
             double x = 0.0;
             double y = 0.0;
             if (!id.empty() && !name.empty() && extractJsonNumber(objectJson, "x", x) && extractJsonNumber(objectJson, "y", y)) {
-                if (name != playerName) {
+                if (name != localName) {
+                    std::lock_guard<std::mutex> lock(stateMutex);
                     RemotePlayer& remote = remotes[id];
                     remote.playerId = id;
                     remote.playerName = name;
@@ -357,6 +446,46 @@ private:
             pos = objEnd;
         }
 
-        statusText = "room " + roomCode + " players " + std::to_string(static_cast<int>(remotes.size()) + 1);
+        std::lock_guard<std::mutex> lock(stateMutex);
+        statusText = "room " + localRoomCode + " players " + std::to_string(static_cast<int>(remotes.size()) + 1);
+    }
+
+    void workerLoop() {
+        double lastPushTime = 0.0;
+        double lastPollTime = 0.0;
+
+        while (!stopRequested.load()) {
+            bool localConnected = false;
+            std::string localRoomCode;
+            vec2 localPos;
+
+            {
+                std::lock_guard<std::mutex> lock(stateMutex);
+                localConnected = connected;
+                localRoomCode = roomCode;
+                localPos = latestLocalPos;
+            }
+
+            if (!localConnected) {
+                tryConnectRoom();
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                continue;
+            }
+
+            const auto now = std::chrono::steady_clock::now().time_since_epoch();
+            const double nowSeconds = std::chrono::duration<double>(now).count();
+
+            if (nowSeconds - lastPushTime >= 0.10) {
+                postPresence(localPos, localRoomCode);
+                lastPushTime = nowSeconds;
+            }
+
+            if (nowSeconds - lastPollTime >= 0.10) {
+                pollPresence(localRoomCode, nowSeconds);
+                lastPollTime = nowSeconds;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
     }
 };
