@@ -285,7 +285,7 @@ int main()
             vec2 playHalfSize = vec2(220.0f, 70.0f);
             bool hoveringPlay = BoxCollide(playCenter, playHalfSize, mouseUI, vec2(0.0f));
 
-            Image::DrawRect(vec2(0.0f, 0.0f), vec2(screen.x / zoom, screen.y / zoom), 0.14f, 0.17f, 0.22f);
+            Image::DrawRect(vec2(0.0f, 0.0f), vec2(screen.x / zoom, screen.y / zoom), 0.94f, 0.97f, 0.92f);
             if (hoveringPlay) {
                 Image::DrawRect(playCenter, playHalfSize, 0.25f, 0.70f, 0.43f);
             } else {
@@ -293,7 +293,7 @@ int main()
             }
 
             Text::DrawStringCentered("community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
-            Text::DrawStringCentered("play", playCenter - vec2(0.0f, 16.0f), 28.0f / zoom, 1.3f);
+            Text::DrawStringCentered("play", playCenter - vec2(0.0), 28.0f / zoom, 1.3f);
             Text::DrawStringCentered("click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, 1.3f);
 
             if (hoveringPlay && Mouse::IsPressed(0)) {
