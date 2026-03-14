@@ -392,7 +392,7 @@ int main()
 
                 player.controls();
                 player.pos = player.pos + player.vel;
-                multiplayer.sync(player.pos, glfwGetTime());
+                multiplayer.sync(player.pos);
 
                 if (BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
                     int taskId = addTask(character.tasks, player.tasks);
@@ -485,6 +485,7 @@ int main()
         glfwSwapBuffers(window);
     }
 
+    multiplayer.shutdown();
     glfwTerminate();
     return 0;
 }

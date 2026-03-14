@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -20,6 +21,13 @@ struct RemotePlayer {
     std::string playerId;
     std::string playerName;
     vec2 pos = vec2(0.0f);
+    vec2 renderPos = vec2(0.0f);
+    bool hasRenderPos = false;
+    struct PositionSample {
+        vec2 pos = vec2(0.0f);
+        double timestamp = 0.0;
+    };
+    std::deque<PositionSample> positionBuffer;
     double lastSeenTime = 0.0;
 };
 
@@ -28,7 +36,7 @@ public:
     MultiplayerClient() = default;
 
     ~MultiplayerClient() {
-        stopWorker();
+        shutdown();
     }
 
     MultiplayerClient(const MultiplayerClient&) = delete;
@@ -62,15 +70,73 @@ public:
         return true;
     }
 
-    void sync(const vec2& localPos, double nowSeconds) {
+    void shutdown() {
+        stopWorker();
+        leaveRoom();
+    }
+
+    void sync(const vec2& localPos) {
+        double nowSeconds = getCurrentTimeSeconds();
         std::lock_guard<std::mutex> lock(stateMutex);
         latestLocalPos = localPos;
 
         const double staleTimeout = 5.0;
+        const double interpolationDelay = 0.10;
+        const double maxExtrapolation = 0.10;
         for (auto it = remotes.begin(); it != remotes.end();) {
             if (nowSeconds - it->second.lastSeenTime > staleTimeout) {
                 it = remotes.erase(it);
             } else {
+                RemotePlayer& remote = it->second;
+                vec2 targetPos = remote.pos;
+
+                if (!remote.positionBuffer.empty()) {
+                    double renderTime = nowSeconds - interpolationDelay;
+
+                    if (remote.positionBuffer.size() == 1) {
+                        targetPos = remote.positionBuffer.back().pos;
+                    } else {
+                        bool foundInterval = false;
+                        for (std::size_t index = 1; index < remote.positionBuffer.size(); ++index) {
+                            const RemotePlayer::PositionSample& previous = remote.positionBuffer[index - 1];
+                            const RemotePlayer::PositionSample& next = remote.positionBuffer[index];
+
+                            if (renderTime >= previous.timestamp && renderTime <= next.timestamp) {
+                                double interval = next.timestamp - previous.timestamp;
+                                float alpha = 0.0f;
+                                if (interval > 0.0001) {
+                                    alpha = static_cast<float>((renderTime - previous.timestamp) / interval);
+                                }
+                                alpha = std::clamp(alpha, 0.0f, 1.0f);
+                                targetPos = previous.pos + (next.pos - previous.pos) * alpha;
+                                foundInterval = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundInterval) {
+                            const RemotePlayer::PositionSample& latest = remote.positionBuffer.back();
+                            const RemotePlayer::PositionSample& previous = remote.positionBuffer[remote.positionBuffer.size() - 2];
+                            vec2 velocity = vec2(0.0f);
+                            double dt = latest.timestamp - previous.timestamp;
+                            if (dt > 0.0001) {
+                                velocity = (latest.pos - previous.pos) / static_cast<float>(dt);
+                            }
+
+                            double extrapolation = std::clamp(renderTime - latest.timestamp, 0.0, maxExtrapolation);
+                            targetPos = latest.pos + velocity * static_cast<float>(extrapolation);
+                        }
+                    }
+                }
+
+                if (!remote.hasRenderPos) {
+                    remote.renderPos = targetPos;
+                    remote.hasRenderPos = true;
+                }
+
+                const float catchupFactor = 0.30f;
+                remote.renderPos.x += (targetPos.x - remote.renderPos.x) * catchupFactor;
+                remote.renderPos.y += (targetPos.y - remote.renderPos.y) * catchupFactor;
                 ++it;
             }
         }
@@ -80,8 +146,9 @@ public:
         std::lock_guard<std::mutex> lock(stateMutex);
         for (const auto& entry : remotes) {
             const RemotePlayer& remote = entry.second;
-            Image::Draw(sharedTexture, remote.pos, 150.0f);
-            Text::DrawStringCentered(remote.playerName, vec2(remote.pos.x, remote.pos.y + 190.0f), 14.0f, 1.3f);
+            vec2 drawPos = remote.hasRenderPos ? remote.renderPos : remote.pos;
+            Image::Draw(sharedTexture, drawPos, 150.0f);
+            Text::DrawStringCentered(remote.playerName, vec2(drawPos.x, drawPos.y + 190.0f), 14.0f, 1.3f);
         }
     }
 
@@ -175,6 +242,39 @@ private:
         if (worker.joinable()) {
             worker.join();
         }
+    }
+
+    void leaveRoom() {
+        std::string localRoomCode;
+        std::string localName;
+
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            if (roomCode.empty() || playerName.empty()) {
+                connected = false;
+                remotes.clear();
+                statusText = "multiplayer offline";
+                return;
+            }
+
+            localRoomCode = roomCode;
+            localName = playerName;
+        }
+
+        std::ostringstream body;
+        body << "{\"playerName\":\"" << escapeJson(localName) << "\"}";
+        tryPostJson("/api/multiplayer/rooms/" + localRoomCode + "/leave", body.str());
+
+        std::lock_guard<std::mutex> lock(stateMutex);
+        connected = false;
+        roomCode.clear();
+        remotes.clear();
+        statusText = "multiplayer offline";
+    }
+
+    static double getCurrentTimeSeconds() {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        return std::chrono::duration<double>(now).count();
     }
 
     static std::string sanitizeName(const std::string& raw) {
@@ -439,6 +539,29 @@ private:
                     remote.playerId = id;
                     remote.playerName = name;
                     remote.pos = vec2(static_cast<float>(x), static_cast<float>(y));
+
+                    if (!remote.positionBuffer.empty()) {
+                        const RemotePlayer::PositionSample& lastSample = remote.positionBuffer.back();
+                        if (std::abs(lastSample.pos.x - remote.pos.x) < 0.001f &&
+                            std::abs(lastSample.pos.y - remote.pos.y) < 0.001f) {
+                            remote.positionBuffer.back().timestamp = nowSeconds;
+                        } else {
+                            remote.positionBuffer.push_back({remote.pos, nowSeconds});
+                        }
+                    } else {
+                        remote.positionBuffer.push_back({remote.pos, nowSeconds});
+                    }
+
+                    const std::size_t maxBufferSize = 12;
+                    if (remote.positionBuffer.size() > maxBufferSize) {
+                        remote.positionBuffer.pop_front();
+                    }
+
+                    if (!remote.hasRenderPos) {
+                        remote.renderPos = remote.pos;
+                        remote.hasRenderPos = true;
+                    }
+
                     remote.lastSeenTime = nowSeconds;
                 }
             }
@@ -472,15 +595,14 @@ private:
                 continue;
             }
 
-            const auto now = std::chrono::steady_clock::now().time_since_epoch();
-            const double nowSeconds = std::chrono::duration<double>(now).count();
+            const double nowSeconds = getCurrentTimeSeconds();
 
-            if (nowSeconds - lastPushTime >= 0.10) {
+            if (nowSeconds - lastPushTime >= 0.05) {
                 postPresence(localPos, localRoomCode);
                 lastPushTime = nowSeconds;
             }
 
-            if (nowSeconds - lastPollTime >= 0.10) {
+            if (nowSeconds - lastPollTime >= 0.05) {
                 pollPresence(localRoomCode, nowSeconds);
                 lastPollTime = nowSeconds;
             }
