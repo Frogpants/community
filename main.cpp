@@ -52,6 +52,7 @@ std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
 std::string server = "localhost";
 
 int tick = 1;
+//float timer = 0.0;
 
 bool editor = false;
 int mode = 0;
@@ -268,10 +269,16 @@ int main()
     GLuint deleteTex = Image::Load("assets/delete.png");
     GLuint selectTex = Image::Load("assets/interact-select.png");
 
+    // Main Menu
+
+    GLuint playButton = Image::Load("assets/menu/play-button.png");
+
     MultiplayerClient multiplayer;
     multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", server.c_str()), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
     multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", getRandomUsername()));
     std::string requestedRoomCode = getEnvOrDefault("COMMUNITY_ROOM_CODE", "");
+
+    float menuScale = 1.0;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -281,22 +288,27 @@ int main()
 
         glLoadIdentity();
 
+        timer += 0.01;
+
         if (inMainMenu) {
             vec2 mouseUI = GetMouseUI(window);
-            vec2 playCenter = vec2(0.0f, -80.0f);
+            vec2 playCenter = vec2(0.0f, -80.0f + 10.0*sin(timer * 0.1));
             vec2 playHalfSize = vec2(220.0f, 70.0f);
             bool hoveringPlay = BoxCollide(playCenter, playHalfSize, mouseUI, vec2(0.0f));
 
             Image::DrawRect(vec2(0.0f, 0.0f), vec2(screen.x / zoom, screen.y / zoom), 0.94f, 0.97f, 0.92f);
             if (hoveringPlay) {
-                Image::DrawRect(playCenter, playHalfSize, 0.25f, 0.70f, 0.43f);
+                menuScale += 0.05 * (1.2 - menuScale);
             } else {
-                Image::DrawRect(playCenter, playHalfSize, 0.20f, 0.58f, 0.38f);
+                menuScale += 0.05 * (1.0 - menuScale);
             }
+            
+            Image::Draw(playButton, playCenter, vec2(140.0, 70.0) * menuScale);
 
             Text::DrawStringCentered("welcome to your community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
-            Text::DrawStringCentered("play", playCenter - vec2(0.0), 28.0f / zoom, 1.3f);
+            Text::DrawStringCentered("play", playCenter, 28.0f * menuScale / zoom, 1.3f);
             Text::DrawStringCentered("click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, 1.3f);
+            Text::DrawStringCentered("idiot", vec2(0.0f, -240.0f), 9.0f / zoom, 1.3f);
 
             if (hoveringPlay && Mouse::IsPressed(0)) {
                 inMainMenu = false;
