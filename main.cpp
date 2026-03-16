@@ -60,6 +60,10 @@ int selectMode = 0;
 int selected = 0;
 int tile = 0;
 
+const std::string fixedDoorTexturePath = "assets/door.png";
+const vec2 fixedDoorPosition = vec2(128.0f, 32.0f);
+const vec2 fixedDoorSize = vec2(32.0f, 64.0f);
+
 float zoom = 2.0;
 
 int running = 1;
@@ -268,6 +272,7 @@ int main()
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
     GLuint selectTex = Image::Load("assets/interact-select.png");
+    GLuint fixedDoorTex = Image::Load(fixedDoorTexturePath.c_str());
 
     // Main Menu
 
@@ -338,6 +343,10 @@ int main()
                 }
             }
             ++i;
+        }
+
+        if (fixedDoorTex != 0) {
+            Image::Draw(fixedDoorTex, fixedDoorPosition, fixedDoorSize);
         }
 
         if (running) {
