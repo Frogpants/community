@@ -166,6 +166,26 @@ namespace Image {
     ////////////////////////////////////////////////////////////
     // DRAW COLORED RECTANGLE (NO TEXTURE)
     ////////////////////////////////////////////////////////////
+    void DrawRect(vec2 pos, vec2 size, float r, float g, float b, float a, float angle)
+    {
+        glPushMatrix();
+
+        glTranslatef(pos.x, pos.y, 0);
+        glRotatef(angle, 0, 0, 1);
+
+        glBindTexture(GL_TEXTURE_2D, 0);  // disable texture
+        glColor4f(r, g, b, a);
+
+        glBegin(GL_QUADS);
+            glVertex2f(-size.x, -size.y);
+            glVertex2f( size.x, -size.y);
+            glVertex2f( size.x,  size.y);
+            glVertex2f(-size.x,  size.y);
+        glEnd();
+
+        glPopMatrix();
+    }
+
     void DrawRect(vec2 pos, vec2 size, float r, float g, float b, float angle)
     {
         glPushMatrix();

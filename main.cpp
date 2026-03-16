@@ -49,6 +49,8 @@ std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
 
 // Game Control Variables
 
+std::string server = "localhost";
+
 int tick = 1;
 
 bool editor = false;
@@ -267,7 +269,7 @@ int main()
     GLuint selectTex = Image::Load("assets/interact-select.png");
 
     MultiplayerClient multiplayer;
-    multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", "localhost"), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
+    multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", server.c_str()), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
     multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", getRandomUsername()));
     std::string requestedRoomCode = getEnvOrDefault("COMMUNITY_ROOM_CODE", "");
 
@@ -292,7 +294,7 @@ int main()
                 Image::DrawRect(playCenter, playHalfSize, 0.20f, 0.58f, 0.38f);
             }
 
-            Text::DrawStringCentered("community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
+            Text::DrawStringCentered("welcome to your community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
             Text::DrawStringCentered("play", playCenter - vec2(0.0), 28.0f / zoom, 1.3f);
             Text::DrawStringCentered("click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, 1.3f);
 
