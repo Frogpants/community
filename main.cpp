@@ -209,10 +209,13 @@ int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& 
 int main()
 {
     srand((unsigned int)time(nullptr));
+
     std::vector<Tile> tiles;
-    //tiles = genWorld(vec2(120,100));
+    tiles = genWorld(vec2(120,100));
+
     if (!isEmpty("game/data/map.dat")) {
-        tiles = load("game/data/map.dat");
+        std::vector<Tile> lst = load("game/data/map.dat");
+        tiles.insert(tiles.end(), lst.begin(), lst.end());
     }
 
     if (!glfwInit())
