@@ -23,6 +23,8 @@ struct Player {
 
     float speed = 0.2;
 
+    int room = 0;
+
     std::vector<std::string> tasks;
 
     void controls() {

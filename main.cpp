@@ -59,6 +59,8 @@ int mode = 0;
 int selectMode = 0;
 int selected = 0;
 int tile = 0;
+bool editorNextRoomHeld = false;
+bool editorPrevRoomHeld = false;
 
 const std::string fixedDoorTexturePath = "assets/door.png";
 const vec2 fixedDoorPosition = vec2(128.0f, 32.0f);
@@ -334,6 +336,11 @@ int main()
         int i = 0;
         selected = -1;
         for (const Tile& t : tiles) {
+            if (t.room != player.room) {
+                ++i;
+                continue;
+            }
+
             if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) / zoom) {
                 if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) / zoom) {
                     Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
@@ -359,6 +366,17 @@ int main()
             if (mode) {
                 camera.controls();
 
+                bool nextRoomDown = Input::IsPressed("e");
+                bool prevRoomDown = Input::IsPressed("q");
+
+                if (nextRoomDown) {
+                    player.room += 1;
+                }
+
+                if (prevRoomDown) {
+                    player.room = std::max(0, player.room - 1);
+                }
+
                 if (Input::IsPressed("1")) {
                     selectMode = 0;
                 }
@@ -369,6 +387,7 @@ int main()
 
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
+                t.room = player.room;
 
                 if (Input::IsPressed("x")) {
                     tile += 1;
@@ -425,6 +444,12 @@ int main()
                         std::cout << "Task added: " << taskName << std::endl;
                     } else {
                         std::cout << "All tasks completed. No more tasks available." << std::endl;
+                    }
+                }
+
+                if (BoxCollide(player.pos, player.dim, fixedDoorPosition, fixedDoorSize)) {
+                    if (Input::IsPressed("e")) {
+                        player.room = 1 - player.room;
                     }
                 }
 
@@ -485,6 +510,9 @@ int main()
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
+
+        std::string roomText = "room " + std::to_string(player.room);
+        Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
 
         Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 180) / zoom, 20.0f / zoom, 1.5f);
 

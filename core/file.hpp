@@ -44,6 +44,7 @@ void save(const std::vector<Tile>& tiles, const std::string& filename)
         out.write(reinterpret_cast<const char*>(&t.pos.y), sizeof(float));
         out.write(reinterpret_cast<const char*>(&t.id), sizeof(int));
         out.write(reinterpret_cast<const char*>(&t.layer), sizeof(int));
+        out.write(reinterpret_cast<const char*>(&t.room), sizeof(int));
     }
 }
 
@@ -54,9 +55,20 @@ std::vector<Tile> load(const std::string& filename)
     std::ifstream in(filename, std::ios::binary);
     if (!in) return tiles;
 
+    in.seekg(0, std::ios::end);
+    std::streamoff totalSize = in.tellg();
+    in.seekg(0, std::ios::beg);
+
     uint32_t count;
     if (!in.read(reinterpret_cast<char*>(&count), sizeof(count)))
         return tiles;
+
+    const std::streamoff headerSize = static_cast<std::streamoff>(sizeof(uint32_t));
+    const std::streamoff legacyTileSize = static_cast<std::streamoff>(sizeof(float) * 2 + sizeof(int) * 2);
+    const std::streamoff roomTileSize = static_cast<std::streamoff>(sizeof(float) * 2 + sizeof(int) * 3);
+    const std::streamoff payloadSize = totalSize - headerSize;
+    const std::streamoff expectedRoomPayload = static_cast<std::streamoff>(count) * roomTileSize;
+    const bool hasRoom = (count > 0 && payloadSize >= expectedRoomPayload);
 
     tiles.reserve(count);
 
@@ -64,10 +76,29 @@ std::vector<Tile> load(const std::string& filename)
     {
         Tile t;
 
-        in.read(reinterpret_cast<char*>(&t.pos.x), sizeof(float));
-        in.read(reinterpret_cast<char*>(&t.pos.y), sizeof(float));
-        in.read(reinterpret_cast<char*>(&t.id), sizeof(int));
-        in.read(reinterpret_cast<char*>(&t.layer), sizeof(int));
+        if (!in.read(reinterpret_cast<char*>(&t.pos.x), sizeof(float))) {
+            break;
+        }
+
+        if (!in.read(reinterpret_cast<char*>(&t.pos.y), sizeof(float))) {
+            break;
+        }
+
+        if (!in.read(reinterpret_cast<char*>(&t.id), sizeof(int))) {
+            break;
+        }
+
+        if (!in.read(reinterpret_cast<char*>(&t.layer), sizeof(int))) {
+            break;
+        }
+
+        if (hasRoom) {
+            if (!in.read(reinterpret_cast<char*>(&t.room), sizeof(int))) {
+                break;
+            }
+        } else {
+            t.room = 0;
+        }
 
         tiles.push_back(t);
     }

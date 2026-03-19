@@ -10,6 +10,8 @@ struct Tile {
     int id = 0;
 
     int layer = 0;
+
+    int room = 0;
 };
 
 inline vec2 snap(vec2 p, float n) {
