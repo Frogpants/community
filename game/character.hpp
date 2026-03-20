@@ -20,6 +20,8 @@ struct Character {
 
     float speed = 0.4;
 
+    int room = 0;
+
     vec2 target;
 
     std::string name = "Character";

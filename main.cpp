@@ -286,6 +286,7 @@ int main()
     player.texture = Image::Load("assets/agent-bullet.png");
     character.texture = Image::Load("assets/npcs/character.png");
     character.pos = vec2(300.0, 0.0);
+    character.room = 1;
     character.roamCenter = character.pos; // Set roam center to initial position
     
     
@@ -472,9 +473,7 @@ int main()
                 player.pos = player.pos + player.vel;
                 multiplayer.sync(player.pos);
 
-                bool characterInCurrentRoom = (player.room == 1);
-
-                if (characterInCurrentRoom && BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
+                if (character.room == player.room && BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
                     int taskId = addTask(character.tasks, player.tasks);
                     if (taskId != -1) {
                         const std::string& taskName = character.tasks[taskId];
@@ -492,11 +491,11 @@ int main()
                 }
 
                 // Character starts roaming when at max level (90)
-                if (characterInCurrentRoom && character.level >= 90) {
+                if (character.room == player.room && character.level >= 90) {
                     character.isRoaming = true;
                 }
 
-                if (characterInCurrentRoom && character.isRoaming) {
+                if (character.room == player.room && character.isRoaming) {
                     character.roam();
                 }
 
