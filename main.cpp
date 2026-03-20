@@ -43,7 +43,22 @@ Character character;
 std::vector<Character> characters;
 std::vector<Task> objectives;
 
-std::vector<std::string> tileTex = grabFiles("dist/assets/tiles");
+std::vector<std::string> loadTileLibrary() {
+    std::vector<std::string> files = grabFiles("dist/assets/tiles");
+    std::vector<std::string> townFiles = grabFiles("dist/assets/town");
+    files.insert(files.end(), townFiles.begin(), townFiles.end());
+
+    if (!files.empty()) {
+        return files;
+    }
+
+    files = grabFiles("assets/tiles");
+    townFiles = grabFiles("assets/town");
+    files.insert(files.end(), townFiles.begin(), townFiles.end());
+    return files;
+}
+
+std::vector<std::string> tileTex = loadTileLibrary();
 std::vector<std::string> itemTex = grabFiles("dist/assets/items");
 std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
 
@@ -393,6 +408,8 @@ int main()
                 t.pos = snap(mouse + 32, 64.0);
                 t.room = player.room;
 
+                int tileCount = static_cast<int>(tileTextures.size());
+
                 if (Input::IsPressed("x")) {
                     tile += 1;
                 }
@@ -401,10 +418,25 @@ int main()
                     tile -= 1;
                 }
 
-                tile = std::clamp(tile, 0, (int)tileTextures.size() - 1);
+                if (Mouse::ScrollY() > 0.0) {
+                    tile += 1;
+                } else if (Mouse::ScrollY() < 0.0) {
+                    tile -= 1;
+                }
+
+                if (tileCount > 0) {
+                    if (tile < 0) {
+                        tile = tileCount - 1;
+                    } else if (tile >= tileCount) {
+                        tile = 0;
+                    }
+                } else {
+                    tile = 0;
+                }
+
                 t.id = tile;
 
-                if (selectMode == 0) {
+                if (selectMode == 0 && tileCount > 0) {
                     Image::Draw(tileTextures[tile], t.pos, 32);
                 } else {
                     Image::Draw(deleteTex, t.pos, 32);
@@ -526,6 +558,11 @@ int main()
 
         std::string roomText = "room " + std::to_string(player.room);
         Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
+
+        if (mode) {
+            std::string editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " (x/z or wheel)";
+            Text::DrawString(editorTileText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
+        }
 
         Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 180) / zoom, 20.0f / zoom, 1.5f);
 
