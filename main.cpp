@@ -201,6 +201,7 @@ int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& 
     Task task;
     task.id = t;
     task.pos = GetTaskSpawnPosition(ts[t], t);
+    task.room = 1;
     objectives.push_back(task);
     return t;
 }
@@ -439,7 +440,9 @@ int main()
                 player.pos = player.pos + player.vel;
                 multiplayer.sync(player.pos);
 
-                if (BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
+                bool characterInCurrentRoom = (player.room == 1);
+
+                if (characterInCurrentRoom && BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
                     int taskId = addTask(character.tasks, player.tasks);
                     if (taskId != -1) {
                         const std::string& taskName = character.tasks[taskId];
@@ -457,11 +460,11 @@ int main()
                 }
 
                 // Character starts roaming when at max level (90)
-                if (character.level >= 90) {
+                if (characterInCurrentRoom && character.level >= 90) {
                     character.isRoaming = true;
                 }
 
-                if (character.isRoaming) {
+                if (characterInCurrentRoom && character.isRoaming) {
                     character.roam();
                 }
 
@@ -477,6 +480,11 @@ int main()
 
         int id = 0;
         for (const Task& t : objectives) {
+            if (t.room != player.room) {
+                ++id;
+                continue;
+            }
+
             if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
                 if (Input::IsPressed("e")) {
                     objectives.erase(objectives.begin() + id);
@@ -490,7 +498,9 @@ int main()
 
         Image::Draw(player.texture, player.pos, 150);
         multiplayer.drawRemotePlayers(player.texture);
-        Image::Draw(character.texture, character.pos, 150);
+        if (player.room == 1) {
+            Image::Draw(character.texture, character.pos, 150);
+        }
 
         // UI
         glLoadIdentity();
