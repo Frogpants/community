@@ -29,4 +29,10 @@ endif
 run:
 	$(RUN_TARGET)
 
-.PHONY: all clean
+web:
+	bash build_web.sh
+
+web-run:
+	python3 -m http.server 8080 --directory dist_web
+
+.PHONY: all clean web web-run

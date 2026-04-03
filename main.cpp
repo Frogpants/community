@@ -5,7 +5,9 @@
 
 #include <GLFW/glfw3.h>
 
-#ifdef __APPLE__
+#ifdef __EMSCRIPTEN__
+#include <GLES/gl.h>
+#elif defined(__APPLE__)
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #else
@@ -17,11 +19,25 @@
 #include <ctime>
 #include <cmath>
 #include <string>
+#include <functional>
 
 #include "game/player.hpp"
 #include "game/character.hpp"
 #include "game/camera.hpp"
+#ifdef __EMSCRIPTEN__
+class MultiplayerClient {
+public:
+    void setServer(const std::string&, int) {}
+    void setPlayerName(const std::string&) {}
+    bool initOrJoin(const std::string&) { return false; }
+    void shutdown() {}
+    void sync(const vec2&) {}
+    void drawRemotePlayers(GLuint) {}
+    std::string getStatusText() const { return "multiplayer unavailable on web build"; }
+};
+#else
 #include "game/multiplayer.hpp"
+#endif
 #include "game/tile.hpp"
 #include "game/task.hpp"
 
@@ -32,6 +48,18 @@
 #include "core/images/stb_image.h"
 #include "core/text.hpp"
 #include "core/file.hpp"
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+
+static std::function<void()>* gWebFrame = nullptr;
+
+static void WebFrameTrampoline() {
+    if (gWebFrame != nullptr) {
+        (*gWebFrame)();
+    }
+}
+#endif
 
 
 // Game Assets
@@ -58,16 +86,23 @@ std::vector<std::string> loadTileLibrary() {
     return files;
 }
 
+std::vector<std::string> loadAssetFiles(const std::string& relativePath) {
+    std::vector<std::string> files = grabFiles("dist/assets/" + relativePath);
+    if (!files.empty()) {
+        return files;
+    }
+    return grabFiles("assets/" + relativePath);
+}
+
 std::vector<std::string> tileTex = loadTileLibrary();
-std::vector<std::string> itemTex = grabFiles("dist/assets/items");
-std::vector<std::string> heartTex = grabFiles("dist/assets/stats/health");
+std::vector<std::string> itemTex = loadAssetFiles("items");
+std::vector<std::string> heartTex = loadAssetFiles("stats/health");
 
 // Game Control Variables
 
 std::string server = "localhost";
 
 int tick = 1;
-//float timer = 0.0;
 
 bool editor = false;
 int mode = 0;
@@ -307,7 +342,16 @@ int main()
 
     float menuScale = 1.0;
 
-    while (!glfwWindowShouldClose(window)) {
+    auto frame = [&]() {
+        if (glfwWindowShouldClose(window)) {
+        #ifndef __EMSCRIPTEN__
+            return;
+        #else
+            emscripten_cancel_main_loop();
+            return;
+        #endif
+        }
+
         glfwPollEvents();
 
         glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
@@ -347,7 +391,7 @@ int main()
 
             Manager::Update();
             glfwSwapBuffers(window);
-            continue;
+            return;
         }
 
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
@@ -536,17 +580,19 @@ int main()
         // UI
         glLoadIdentity();
         
-        for (int i = 0; i < 9; ++i) {
-            float perc = (character.level/90.0) - (i * 0.1);
-            GLuint tex;
-            if (perc >= 0.1) {
-                tex = heartTextures[1];
-            } else if (perc >= 0.05) {
-                tex = heartTextures[2];
-            } else {
-                tex = heartTextures[0];
+        if (heartTextures.size() >= 3) {
+            for (int i = 0; i < 9; ++i) {
+                float perc = (character.level/90.0) - (i * 0.1);
+                GLuint tex;
+                if (perc >= 0.1) {
+                    tex = heartTextures[1];
+                } else if (perc >= 0.05) {
+                    tex = heartTextures[2];
+                } else {
+                    tex = heartTextures[0];
+                }
+                Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
             }
-            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
         std::string levelText = "level " + std::to_string(character.level);
@@ -583,9 +629,20 @@ int main()
         Manager::Update();
 
         glfwSwapBuffers(window);
+
+    };
+
+#ifdef __EMSCRIPTEN__
+    std::function<void()> frameFn = frame;
+    gWebFrame = &frameFn;
+    emscripten_set_main_loop(WebFrameTrampoline, 0, 1);
+#else
+    while (!glfwWindowShouldClose(window)) {
+        frame();
     }
 
     multiplayer.shutdown();
     glfwTerminate();
     return 0;
+#endif
 }
