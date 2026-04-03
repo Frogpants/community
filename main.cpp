@@ -66,10 +66,16 @@ static void WebFrameTrampoline() {
 
 Player player;
 Camera camera;
-Character character;
 
 std::vector<Character> characters;
 std::vector<Task> objectives;
+
+struct Door {
+    vec2 hubPos = vec2(0.0f);
+    vec2 roomPos = vec2(0.0f);
+    vec2 dim = vec2(32.0f, 64.0f);
+    int roomId = 0;
+};
 
 std::vector<std::string> loadTileLibrary() {
     std::vector<std::string> files = grabFiles("dist/assets/tiles");
@@ -115,6 +121,7 @@ bool editorPrevRoomHeld = false;
 const std::string fixedDoorTexturePath = "assets/door.png";
 const vec2 fixedDoorPosition = vec2(128.0f, 32.0f);
 const vec2 fixedDoorSize = vec2(32.0f, 64.0f);
+const float doorSpacing = 112.0f;
 
 float zoom = 2.0;
 
@@ -157,6 +164,58 @@ std::string getRandomUsername() {
     int suffix = randInt(100, 999);
 
     return adjectives[adjectiveIndex] + "-" + nouns[nounIndex] + std::to_string(suffix);
+}
+
+std::vector<std::string> getCharacterTasks() {
+    return {"wash dishes", "take out trash", "do laundry"};
+}
+
+Character makeCharacterForRoom(int roomId, int stageIndex) {
+    Character c;
+    c.room = roomId;
+    c.pos = vec2(300.0f + (stageIndex * 96.0f), 0.0f);
+    c.target = c.pos;
+    c.roamCenter = c.pos;
+    c.name = "Character " + std::to_string(stageIndex + 1);
+    c.level = 0;
+    c.isRoaming = false;
+    c.tasksGiven = 0;
+    c.tasksCompleted = 0;
+    c.nextStageSpawned = false;
+    c.tasks = getCharacterTasks();
+    return c;
+}
+
+Door makeDoorForRoom(int roomId) {
+    Door door;
+    door.roomId = roomId;
+    door.hubPos = fixedDoorPosition + vec2(doorSpacing * static_cast<float>(roomId - 1), 0.0f);
+    door.roomPos = fixedDoorPosition;
+    door.dim = fixedDoorSize;
+    return door;
+}
+
+Character* getCharacterForRoom(std::vector<Character>& chars, int roomId) {
+    for (Character& c : chars) {
+        if (c.room == roomId) {
+            return &c;
+        }
+    }
+    return nullptr;
+}
+
+void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int& nextRoomId, Character& completedCharacter) {
+    if (completedCharacter.nextStageSpawned) {
+        return;
+    }
+
+    const int roomId = nextRoomId;
+    nextRoomId += 1;
+
+    doors.push_back(makeDoorForRoom(roomId));
+    chars.push_back(makeCharacterForRoom(roomId, roomId - 1));
+    chars.back().texture = Image::Load("assets/npcs/character.png");
+    completedCharacter.nextStageSpawned = true;
 }
 
 
@@ -222,38 +281,21 @@ void windowResizeCallback(GLFWwindow* window, int width, int height) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-int addTask(const std::vector<std::string>& ts, const std::vector<std::string>& ownedTasks) {
-    if (ts.empty()) {
-        return -1;
+bool addTaskForCharacter(Character& character, Player& localPlayer) {
+    if (character.tasksGiven >= static_cast<int>(character.tasks.size())) {
+        return false;
     }
 
-    std::vector<int> availableTaskIds;
-    for (int i = 0; i < static_cast<int>(ts.size()); ++i) {
-        bool alreadyOwned = false;
-        for (const std::string& owned : ownedTasks) {
-            if (owned == ts[i]) {
-                alreadyOwned = true;
-                break;
-            }
-        }
-
-        if (!alreadyOwned) {
-            availableTaskIds.push_back(i);
-        }
-    }
-
-    if (availableTaskIds.empty()) {
-        return -1;
-    }
-
-    int choice = randInt(0, static_cast<int>(availableTaskIds.size()) - 1);
-    int t = availableTaskIds[choice];
+    int taskId = character.tasksGiven;
     Task task;
-    task.id = t;
-    task.pos = GetTaskSpawnPosition(ts[t], t);
-    task.room = 1;
+    task.id = taskId;
+    task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
+    task.room = character.room;
     objectives.push_back(task);
-    return t;
+
+    localPlayer.tasks.push_back(character.tasks[taskId]);
+    character.tasksGiven += 1;
+    return true;
 }
 
 
@@ -319,12 +361,13 @@ int main()
     glMatrixMode(GL_MODELVIEW);
 
     player.texture = Image::Load("assets/agent-bullet.png");
-    character.texture = Image::Load("assets/npcs/character.png");
-    character.pos = vec2(300.0, 0.0);
-    character.room = 1;
-    character.roamCenter = character.pos; // Set roam center to initial position
-    
-    
+    characters.push_back(makeCharacterForRoom(1, 0));
+    characters[0].texture = Image::Load("assets/npcs/character.png");
+
+    std::vector<Door> doors;
+    doors.push_back(makeDoorForRoom(1));
+    int nextRoomId = 2;
+
     GLuint taskTex = Image::Load("assets/box.png");
     GLuint pause = Image::Load("assets/pause-improved.png");
     GLuint deleteTex = Image::Load("assets/delete.png");
@@ -417,7 +460,13 @@ int main()
         }
 
         if (fixedDoorTex != 0) {
-            Image::Draw(fixedDoorTex, fixedDoorPosition, fixedDoorSize);
+            for (const Door& door : doors) {
+                if (player.room == 0) {
+                    Image::Draw(fixedDoorTex, door.hubPos, door.dim);
+                } else if (player.room == door.roomId) {
+                    Image::Draw(fixedDoorTex, door.roomPos, door.dim);
+                }
+            }
         }
 
         if (running) {
@@ -517,30 +566,36 @@ int main()
                 player.pos = player.pos + player.vel;
                 multiplayer.sync(player.pos);
 
-                if (character.room == player.room && BoxCollide(player.pos, player.dim, character.pos, character.dim) && Input::IsPressed("e")) {
-                    int taskId = addTask(character.tasks, player.tasks);
-                    if (taskId != -1) {
-                        const std::string& taskName = character.tasks[taskId];
-                        player.tasks.push_back(taskName);
-                        std::cout << "Task added: " << taskName << std::endl;
+                Character* currentCharacter = getCharacterForRoom(characters, player.room);
+
+                if (currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
+                    if (currentCharacter->isRoaming) {
+                        std::cout << "This character is dancing. Door opened for the next room." << std::endl;
+                    } else if (addTaskForCharacter(*currentCharacter, player)) {
+                        std::cout << "Task added: " << player.tasks.back() << std::endl;
                     } else {
                         std::cout << "All tasks completed. No more tasks available." << std::endl;
                     }
                 }
 
-                if (BoxCollide(player.pos, player.dim, fixedDoorPosition, fixedDoorSize)) {
-                    if (Input::IsPressed("e")) {
-                        player.room = 1 - player.room;
+                for (const Door& door : doors) {
+                    vec2 doorPos = vec2(-999999.0f);
+                    if (player.room == 0) {
+                        doorPos = door.hubPos;
+                    } else if (player.room == door.roomId) {
+                        doorPos = door.roomPos;
+                    }
+
+                    if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
+                        if (Input::IsPressed("e")) {
+                            player.room = (player.room == 0) ? door.roomId : 0;
+                            break;
+                        }
                     }
                 }
 
-                // Character starts roaming when at max level (90)
-                if (character.room == player.room && character.level >= 90) {
-                    character.isRoaming = true;
-                }
-
-                if (character.room == player.room && character.isRoaming) {
-                    character.roam();
+                if (currentCharacter != nullptr && currentCharacter->isRoaming) {
+                    currentCharacter->roam();
                 }
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
@@ -562,9 +617,28 @@ int main()
 
             if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
                 if (Input::IsPressed("e")) {
+                    Character* completedCharacter = getCharacterForRoom(characters, t.room);
+                    std::string completedTaskName;
+                    if (completedCharacter != nullptr && t.id >= 0 && t.id < static_cast<int>(completedCharacter->tasks.size())) {
+                        completedTaskName = completedCharacter->tasks[t.id];
+                    }
+
                     objectives.erase(objectives.begin() + id);
-                    player.tasks.erase(player.tasks.begin() + id);
-                    character.level += 30;
+                    if (!completedTaskName.empty()) {
+                        auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTaskName);
+                        if (taskIt != player.tasks.end()) {
+                            player.tasks.erase(taskIt);
+                        }
+                    }
+
+                    if (completedCharacter != nullptr) {
+                        completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
+                        completedCharacter->level = completedCharacter->tasksCompleted * 30;
+                        if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
+                            completedCharacter->isRoaming = true;
+                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter);
+                        }
+                    }
                 }
             }
             ++id;
@@ -573,29 +647,29 @@ int main()
 
         Image::Draw(player.texture, player.pos, 150);
         multiplayer.drawRemotePlayers(player.texture);
-        if (player.room == 1) {
-            Image::Draw(character.texture, character.pos, 150);
+        for (const Character& c : characters) {
+            if (c.room == player.room) {
+                Image::Draw(c.texture, c.pos, 150);
+            }
         }
 
         // UI
         glLoadIdentity();
         
-        if (heartTextures.size() >= 3) {
-            for (int i = 0; i < 9; ++i) {
-                float perc = (character.level/90.0) - (i * 0.1);
-                GLuint tex;
-                if (perc >= 0.1) {
-                    tex = heartTextures[1];
-                } else if (perc >= 0.05) {
-                    tex = heartTextures[2];
-                } else {
-                    tex = heartTextures[0];
-                }
-                Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
+        for (int i = 0; i < 9; ++i) {
+            float perc = (character.level/90.0) - (i * 0.1);
+            GLuint tex;
+            if (perc >= 0.1) {
+                tex = heartTextures[1];
+            } else if (perc >= 0.05) {
+                tex = heartTextures[2];
+            } else {
+                tex = heartTextures[0];
             }
+            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
-        std::string levelText = "level " + std::to_string(character.level);
+        std::string levelText = "level " + std::to_string(uiCharacter != nullptr ? uiCharacter->level : 0);
         Text::DrawString(levelText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());

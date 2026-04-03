@@ -21,7 +21,7 @@ struct Player {
 
     float cooldown = 0.0;
 
-    float speed = 0.2;
+    float speed = 1.0;
 
     int room = 0;
 

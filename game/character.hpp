@@ -35,6 +35,11 @@ struct Character {
 
     std::vector<std::string> tasks = {"wash dishes", "take out trash", "do laundry"}; //Tasks might be changed later!
 
+    int tasksGiven = 0;
+    int tasksCompleted = 0;
+
+    bool nextStageSpawned = false;
+
     std::vector<vec2> positions = {};
 
     void follow() {
