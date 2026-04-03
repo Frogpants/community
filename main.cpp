@@ -655,9 +655,11 @@ int main()
 
         // UI
         glLoadIdentity();
+        Character* uiCharacter = getCharacterForRoom(characters, player.room);
+        int uiLevel = (uiCharacter != nullptr) ? uiCharacter->level : 0;
         
         for (int i = 0; i < 9; ++i) {
-            float perc = (character.level/90.0) - (i * 0.1);
+            float perc = (uiLevel / 90.0f) - (i * 0.1f);
             GLuint tex;
             if (perc >= 0.1) {
                 tex = heartTextures[1];
@@ -669,7 +671,7 @@ int main()
             Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
-        std::string levelText = "level " + std::to_string(uiCharacter != nullptr ? uiCharacter->level : 0);
+        std::string levelText = "level " + std::to_string(uiLevel);
         Text::DrawString(levelText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
