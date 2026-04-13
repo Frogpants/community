@@ -1,8 +1,11 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
-TARGET = dist
-SRC = $(shell find . -name "*.cpp")
+SRC = $(shell find . -name "*.cpp" \
+	-not -path "./.emsdk/*" \
+	-not -path "./glfw/*" \
+	-not -path "./dist/*" \
+	-not -path "./dist_web/*")
 
 UNAME_S := $(shell uname -s)
 
@@ -12,21 +15,23 @@ else
 	RUN_TARGET = ./dist/game.exe
 endif
 
+BUILD_TARGET = $(RUN_TARGET)
+
 LDFLAGS = -lglfw -lGL -lGLU -ldl -lpthread
 
-all: $(TARGET)
+all: $(BUILD_TARGET)
 
 clean:
 	bash init.sh
 
-$(TARGET): $(SRC)
+$(BUILD_TARGET): $(SRC)
 ifeq ($(UNAME_S),Darwin)
 	bash build_macos.sh
 else
 	bash build.sh
 endif
 
-run:
+run: $(BUILD_TARGET)
 	$(RUN_TARGET)
 
 web:
@@ -35,4 +40,4 @@ web:
 web-run:
 	python3 -m http.server 8080 --directory dist_web
 
-.PHONY: all clean web web-run
+.PHONY: all clean run web web-run

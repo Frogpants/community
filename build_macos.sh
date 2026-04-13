@@ -13,7 +13,9 @@ mkdir -p "$DIST_DIR"
 echo "Collecting source files..."
 SRC=$(find . -name "*.cpp" \
     -not -path "./glfw/*" \
-    -not -path "./dist/*" | tr '\n' ' ')
+    -not -path "./dist/*" \
+    -not -path "./dist_web/*" \
+    -not -path "./.emsdk/*" | tr '\n' ' ')
 
 echo "Detecting local GLFW build..."
 
