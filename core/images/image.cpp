@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <limits.h>
 #include <unistd.h>
 
@@ -22,6 +23,8 @@
 #endif
 
 namespace Image {
+
+    std::unordered_map<GLuint, std::pair<int, int>> textureSizes;
 
     ////////////////////////////////////////////////////////////
     // HELPER: Get directory of the running executable
@@ -116,8 +119,22 @@ namespace Image {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+        textureSizes[texture] = { width, height };
+
         stbi_image_free(data);
         return texture;
+    }
+
+    bool GetTextureSize(GLuint texture, int& width, int& height)
+    {
+        auto it = textureSizes.find(texture);
+        if (it == textureSizes.end()) {
+            return false;
+        }
+
+        width = it->second.first;
+        height = it->second.second;
+        return true;
     }
 
     ////////////////////////////////////////////////////////////
@@ -158,6 +175,26 @@ namespace Image {
             glTexCoord2f(1, 0); glVertex2f( size.x, -size.y);
             glTexCoord2f(1, 1); glVertex2f( size.x,  size.y);
             glTexCoord2f(0, 1); glVertex2f(-size.x,  size.y);
+        glEnd();
+
+        glPopMatrix();
+    }
+
+    void DrawRegion(GLuint texture, vec2 pos, float size, float u0, float v0, float u1, float v1, float angle)
+    {
+        glPushMatrix();
+
+        glTranslatef(pos.x, pos.y, 0);
+        glRotatef(angle, 0, 0, 1);
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glColor3f(1, 1, 1);
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(u0, v0); glVertex2f(-size, -size);
+            glTexCoord2f(u1, v0); glVertex2f( size, -size);
+            glTexCoord2f(u1, v1); glVertex2f( size,  size);
+            glTexCoord2f(u0, v1); glVertex2f(-size,  size);
         glEnd();
 
         glPopMatrix();

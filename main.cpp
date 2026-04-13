@@ -115,6 +115,14 @@ int mode = 0;
 int selectMode = 0;
 int selected = 0;
 int tile = 0;
+int tilesetTile = 0;
+bool useTilesetInEditor = false;
+int tilesetStartId = 0;
+int tilesetCount = 0;
+int tilesetCols = 0;
+int tilesetRows = 0;
+const int tilesetTilePixels = 32;
+GLuint tilesetTexture = 0;
 bool editorNextRoomHeld = false;
 bool editorPrevRoomHeld = false;
 
@@ -354,6 +362,20 @@ int main()
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
     std::vector<GLuint> heartTextures = loadTextures(heartTex);
 
+    tilesetStartId = static_cast<int>(tileTextures.size());
+    tilesetTexture = Image::Load("dist/assets/tileset/tileset1.png");
+    if (tilesetTexture == 0) {
+        tilesetTexture = Image::Load("assets/tileset/tileset1.png");
+    }
+
+    int tilesetWidth = 0;
+    int tilesetHeight = 0;
+    if (tilesetTexture != 0 && Image::GetTextureSize(tilesetTexture, tilesetWidth, tilesetHeight)) {
+        tilesetCols = tilesetWidth / tilesetTilePixels;
+        tilesetRows = tilesetHeight / tilesetTilePixels;
+        tilesetCount = tilesetCols * tilesetRows;
+    }
+
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -450,7 +472,20 @@ int main()
 
             if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) / zoom) {
                 if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) / zoom) {
-                    Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
+                    if (t.id >= 0 && t.id < static_cast<int>(tileTextures.size())) {
+                        Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
+                    } else if (tilesetTexture != 0 && t.id >= tilesetStartId && t.id < tilesetStartId + tilesetCount && tilesetCols > 0 && tilesetRows > 0) {
+                        int sheetIndex = t.id - tilesetStartId;
+                        int sheetX = sheetIndex % tilesetCols;
+                        int sheetY = sheetIndex / tilesetCols;
+
+                        float u0 = static_cast<float>(sheetX) / static_cast<float>(tilesetCols);
+                        float v0 = static_cast<float>(sheetY) / static_cast<float>(tilesetRows);
+                        float u1 = static_cast<float>(sheetX + 1) / static_cast<float>(tilesetCols);
+                        float v1 = static_cast<float>(sheetY + 1) / static_cast<float>(tilesetRows);
+
+                        Image::DrawRegion(tilesetTexture, t.pos, 32, u0, v0, u1, v1, 0.0);
+                    }
                     if (BoxCollide(mouse, vec2(0.0), t.pos, vec2(32.0))) {
                         selected = i;
                     }
@@ -498,24 +533,35 @@ int main()
                     selectMode = 1;
                 }
 
+                if (Input::IsPressed("3")) {
+                    useTilesetInEditor = !useTilesetInEditor;
+                }
+
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
                 t.room = player.room;
 
                 int tileCount = static_cast<int>(tileTextures.size());
+                int tileDelta = 0;
 
                 if (Input::IsPressed("x")) {
-                    tile += 1;
+                    tileDelta += 1;
                 }
 
                 if (Input::IsPressed("z")) {
-                    tile -= 1;
+                    tileDelta -= 1;
                 }
 
                 if (Mouse::ScrollY() > 0.0) {
-                    tile += 1;
+                    tileDelta += 1;
                 } else if (Mouse::ScrollY() < 0.0) {
-                    tile -= 1;
+                    tileDelta -= 1;
+                }
+
+                if (useTilesetInEditor && tilesetCount > 0) {
+                    tilesetTile += tileDelta;
+                } else {
+                    tile += tileDelta;
                 }
 
                 if (tileCount > 0) {
@@ -528,10 +574,42 @@ int main()
                     tile = 0;
                 }
 
-                t.id = tile;
+                if (tilesetCount > 0) {
+                    if (tilesetTile < 0) {
+                        tilesetTile = tilesetCount - 1;
+                    } else if (tilesetTile >= tilesetCount) {
+                        tilesetTile = 0;
+                    }
+                } else {
+                    tilesetTile = 0;
+                }
+
+                if (useTilesetInEditor && tilesetCount > 0) {
+                    if (tilesetTile < 0) {
+                        tilesetTile = tilesetCount - 1;
+                    } else if (tilesetTile >= tilesetCount) {
+                        tilesetTile = 0;
+                    }
+
+                    t.id = tilesetStartId + tilesetTile;
+                } else {
+                    t.id = tile;
+                }
 
                 if (selectMode == 0 && tileCount > 0) {
-                    Image::Draw(tileTextures[tile], t.pos, 32);
+                    if (useTilesetInEditor && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
+                        int sheetX = tilesetTile % tilesetCols;
+                        int sheetY = tilesetTile / tilesetCols;
+
+                        float u0 = static_cast<float>(sheetX) / static_cast<float>(tilesetCols);
+                        float v0 = static_cast<float>(sheetY) / static_cast<float>(tilesetRows);
+                        float u1 = static_cast<float>(sheetX + 1) / static_cast<float>(tilesetCols);
+                        float v1 = static_cast<float>(sheetY + 1) / static_cast<float>(tilesetRows);
+
+                        Image::DrawRegion(tilesetTexture, t.pos, 32, u0, v0, u1, v1, 0.0);
+                    } else {
+                        Image::Draw(tileTextures[tile], t.pos, 32);
+                    }
                 } else {
                     Image::Draw(deleteTex, t.pos, 32);
                 }
@@ -681,7 +759,13 @@ int main()
         Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
-            std::string editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " (x/z or wheel)";
+            std::string sourceText = useTilesetInEditor ? "tileset" : "library";
+            std::string editorTileText;
+            if (useTilesetInEditor && tilesetCount > 0) {
+                editorTileText = "editor tile " + std::to_string(tilesetTile + 1) + "/" + std::to_string(tilesetCount) + " [" + sourceText + "] (x/z or wheel, 3 toggle)";
+            } else {
+                editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " [" + sourceText + "] (x/z or wheel, 3 toggle)";
+            }
             Text::DrawString(editorTileText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
         }
 
