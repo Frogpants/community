@@ -116,13 +116,27 @@ int selectMode = 0;
 int selected = 0;
 int tile = 0;
 int tilesetTile = 0;
-bool useTilesetInEditor = false;
+int platformTile = 0;
+int houseTile = 0;
+int editorTileSource = 0;
 int tilesetStartId = 0;
 int tilesetCount = 0;
 int tilesetCols = 0;
 int tilesetRows = 0;
-const int tilesetTilePixels = 32;
+int tilesetWidth = 0;
+int tilesetHeight = 0;
+const int tilesetTilePixels = 16;
 GLuint tilesetTexture = 0;
+int platformStartId = 0;
+int platformCount = 0;
+int platformCols = 0;
+int platformRows = 0;
+int platformWidth = 0;
+int platformHeight = 0;
+const int platformTilePixels = 16;
+GLuint platformTexture = 0;
+int houseStartId = 0;
+int houseCount = 0;
 bool editorNextRoomHeld = false;
 bool editorPrevRoomHeld = false;
 
@@ -361,6 +375,8 @@ int main()
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
     std::vector<GLuint> heartTextures = loadTextures(heartTex);
+    std::vector<GLuint> houseTextures;
+    std::vector<vec2> houseFootprints;
 
     tilesetStartId = static_cast<int>(tileTextures.size());
     tilesetTexture = Image::Load("dist/assets/tileset/tileset1.png");
@@ -368,13 +384,46 @@ int main()
         tilesetTexture = Image::Load("assets/tileset/tileset1.png");
     }
 
-    int tilesetWidth = 0;
-    int tilesetHeight = 0;
     if (tilesetTexture != 0 && Image::GetTextureSize(tilesetTexture, tilesetWidth, tilesetHeight)) {
         tilesetCols = tilesetWidth / tilesetTilePixels;
         tilesetRows = tilesetHeight / tilesetTilePixels;
         tilesetCount = tilesetCols * tilesetRows;
     }
+
+    platformStartId = tilesetStartId + tilesetCount;
+    platformTexture = Image::Load("dist/assets/PlatformerPack/OverWorldPropsTowns.png");
+    if (platformTexture == 0) {
+        platformTexture = Image::Load("assets/PlatformerPack/OverWorldPropsTowns.png");
+    }
+
+    if (platformTexture != 0 && Image::GetTextureSize(platformTexture, platformWidth, platformHeight)) {
+        platformCols = platformWidth / platformTilePixels;
+        platformRows = platformHeight / platformTilePixels;
+        platformCount = platformCols * platformRows;
+    }
+
+    houseStartId = platformStartId + platformCount;
+    std::vector<std::string> houseFiles = {
+        "PlatformerPack/Objects/Houses/House.png",
+        "PlatformerPack/Objects/Houses/Inn.png",
+        "PlatformerPack/Objects/Houses/Larger House.png",
+        "PlatformerPack/Objects/Houses/Smaller House.png"
+    };
+
+    for (const std::string& houseFile : houseFiles) {
+        GLuint houseTexture = Image::Load(("dist/assets/" + houseFile).c_str());
+        if (houseTexture == 0) {
+            houseTexture = Image::Load(("assets/" + houseFile).c_str());
+        }
+
+        int houseWidth = 0;
+        int houseHeight = 0;
+        if (houseTexture != 0 && Image::GetTextureSize(houseTexture, houseWidth, houseHeight)) {
+            houseTextures.push_back(houseTexture);
+            houseFootprints.push_back(vec2(static_cast<float>(houseWidth / 16), static_cast<float>(houseHeight / 16)));
+        }
+    }
+    houseCount = static_cast<int>(houseTextures.size());
 
 
     glMatrixMode(GL_PROJECTION);
@@ -461,6 +510,53 @@ int main()
 
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 
+        auto drawFromSheet = [](GLuint texture, int atlasWidth, int atlasHeight, int cols, int tilePixels, int index, vec2 pos) {
+            if (texture == 0 || atlasWidth <= 0 || atlasHeight <= 0 || cols <= 0 || tilePixels <= 0 || index < 0) {
+                return;
+            }
+
+            int sheetX = index % cols;
+            int sheetY = index / cols;
+
+            float texelU = 0.5f / static_cast<float>(atlasWidth);
+            float texelV = 0.5f / static_cast<float>(atlasHeight);
+
+            float u0 = static_cast<float>(sheetX * tilePixels) / static_cast<float>(atlasWidth) + texelU;
+            float v0 = static_cast<float>(sheetY * tilePixels) / static_cast<float>(atlasHeight) + texelV;
+            float u1 = static_cast<float>((sheetX + 1) * tilePixels) / static_cast<float>(atlasWidth) - texelU;
+            float v1 = static_cast<float>((sheetY + 1) * tilePixels) / static_cast<float>(atlasHeight) - texelV;
+
+            Image::DrawRegion(texture, pos, 32, u0, v0, u1, v1, 0.0);
+        };
+
+        auto drawHousePrefab = [&](const Tile& tile, bool render, vec2* outDrawPos, vec2* outDrawHalf) {
+            if (tile.id < houseStartId || tile.id >= houseStartId + houseCount) {
+                return false;
+            }
+
+            int houseIndex = tile.id - houseStartId;
+            if (houseIndex < 0 || houseIndex >= houseCount || houseTextures[houseIndex] == 0) {
+                return false;
+            }
+
+            vec2 footprint = houseFootprints[houseIndex];
+            vec2 drawHalf = vec2(footprint.x * 32.0f, footprint.y * 32.0f);
+            vec2 drawPos = tile.pos + vec2((footprint.x - 1.0f) * 32.0f, (footprint.y - 1.0f) * 32.0f);
+
+            if (render) {
+                Image::Draw(houseTextures[houseIndex], drawPos, drawHalf);
+            }
+
+            if (outDrawPos != nullptr) {
+                *outDrawPos = drawPos;
+            }
+            if (outDrawHalf != nullptr) {
+                *outDrawHalf = drawHalf;
+            }
+
+            return true;
+        };
+
         vec2 mouse = GetMouseWorld(window);
         int i = 0;
         selected = -1;
@@ -470,23 +566,23 @@ int main()
                 continue;
             }
 
-            if (abs(t.pos.x - camera.pos.x) < (screen.x + 64.0) / zoom) {
-                if (abs(t.pos.y - camera.pos.y) < (screen.y + 64.0) / zoom) {
-                    if (t.id >= 0 && t.id < static_cast<int>(tileTextures.size())) {
+            vec2 drawPos = t.pos;
+            vec2 drawHalf = vec2(32.0f);
+            bool isHouse = drawHousePrefab(t, false, &drawPos, &drawHalf);
+
+            if (abs(drawPos.x - camera.pos.x) < (screen.x / zoom) + drawHalf.x) {
+                if (abs(drawPos.y - camera.pos.y) < (screen.y / zoom) + drawHalf.y) {
+                    if (isHouse) {
+                        drawHousePrefab(t, true, nullptr, nullptr);
+                    } else if (t.id >= 0 && t.id < static_cast<int>(tileTextures.size())) {
                         Image::Draw(tileTextures[t.id], t.pos, 32, 0.0);
                     } else if (tilesetTexture != 0 && t.id >= tilesetStartId && t.id < tilesetStartId + tilesetCount && tilesetCols > 0 && tilesetRows > 0) {
-                        int sheetIndex = t.id - tilesetStartId;
-                        int sheetX = sheetIndex % tilesetCols;
-                        int sheetY = sheetIndex / tilesetCols;
-
-                        float u0 = static_cast<float>(sheetX) / static_cast<float>(tilesetCols);
-                        float v0 = static_cast<float>(sheetY) / static_cast<float>(tilesetRows);
-                        float u1 = static_cast<float>(sheetX + 1) / static_cast<float>(tilesetCols);
-                        float v1 = static_cast<float>(sheetY + 1) / static_cast<float>(tilesetRows);
-
-                        Image::DrawRegion(tilesetTexture, t.pos, 32, u0, v0, u1, v1, 0.0);
+                        drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, t.id - tilesetStartId, t.pos);
+                    } else if (platformTexture != 0 && t.id >= platformStartId && t.id < platformStartId + platformCount && platformCols > 0 && platformRows > 0) {
+                        drawFromSheet(platformTexture, platformWidth, platformHeight, platformCols, platformTilePixels, t.id - platformStartId, t.pos);
                     }
-                    if (BoxCollide(mouse, vec2(0.0), t.pos, vec2(32.0))) {
+
+                    if (BoxCollide(mouse, vec2(0.0), drawPos, drawHalf)) {
                         selected = i;
                     }
                 }
@@ -534,7 +630,15 @@ int main()
                 }
 
                 if (Input::IsPressed("3")) {
-                    useTilesetInEditor = !useTilesetInEditor;
+                    editorTileSource = (editorTileSource == 1) ? 0 : 1;
+                }
+
+                if (Input::IsPressed("4")) {
+                    editorTileSource = (editorTileSource == 2) ? 0 : 2;
+                }
+
+                if (Input::IsPressed("5")) {
+                    editorTileSource = (editorTileSource == 3) ? 0 : 3;
                 }
 
                 Tile t;
@@ -558,8 +662,12 @@ int main()
                     tileDelta -= 1;
                 }
 
-                if (useTilesetInEditor && tilesetCount > 0) {
+                if (editorTileSource == 1 && tilesetCount > 0) {
                     tilesetTile += tileDelta;
+                } else if (editorTileSource == 2 && platformCount > 0) {
+                    platformTile += tileDelta;
+                } else if (editorTileSource == 3 && houseCount > 0) {
+                    houseTile += tileDelta;
                 } else {
                     tile += tileDelta;
                 }
@@ -584,29 +692,43 @@ int main()
                     tilesetTile = 0;
                 }
 
-                if (useTilesetInEditor && tilesetCount > 0) {
-                    if (tilesetTile < 0) {
-                        tilesetTile = tilesetCount - 1;
-                    } else if (tilesetTile >= tilesetCount) {
-                        tilesetTile = 0;
+                if (platformCount > 0) {
+                    if (platformTile < 0) {
+                        platformTile = platformCount - 1;
+                    } else if (platformTile >= platformCount) {
+                        platformTile = 0;
                     }
+                } else {
+                    platformTile = 0;
+                }
 
+                if (houseCount > 0) {
+                    if (houseTile < 0) {
+                        houseTile = houseCount - 1;
+                    } else if (houseTile >= houseCount) {
+                        houseTile = 0;
+                    }
+                } else {
+                    houseTile = 0;
+                }
+
+                if (editorTileSource == 1 && tilesetCount > 0) {
                     t.id = tilesetStartId + tilesetTile;
+                } else if (editorTileSource == 2 && platformCount > 0) {
+                    t.id = platformStartId + platformTile;
+                } else if (editorTileSource == 3 && houseCount > 0) {
+                    t.id = houseStartId + houseTile;
                 } else {
                     t.id = tile;
                 }
 
                 if (selectMode == 0 && tileCount > 0) {
-                    if (useTilesetInEditor && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
-                        int sheetX = tilesetTile % tilesetCols;
-                        int sheetY = tilesetTile / tilesetCols;
-
-                        float u0 = static_cast<float>(sheetX) / static_cast<float>(tilesetCols);
-                        float v0 = static_cast<float>(sheetY) / static_cast<float>(tilesetRows);
-                        float u1 = static_cast<float>(sheetX + 1) / static_cast<float>(tilesetCols);
-                        float v1 = static_cast<float>(sheetY + 1) / static_cast<float>(tilesetRows);
-
-                        Image::DrawRegion(tilesetTexture, t.pos, 32, u0, v0, u1, v1, 0.0);
+                    if (editorTileSource == 1 && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
+                        drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, tilesetTile, t.pos);
+                    } else if (editorTileSource == 2 && platformCount > 0 && platformTexture != 0 && platformCols > 0 && platformRows > 0) {
+                        drawFromSheet(platformTexture, platformWidth, platformHeight, platformCols, platformTilePixels, platformTile, t.pos);
+                    } else if (editorTileSource == 3 && houseCount > 0) {
+                        drawHousePrefab(t, true, nullptr, nullptr);
                     } else {
                         Image::Draw(tileTextures[tile], t.pos, 32);
                     }
@@ -759,12 +881,19 @@ int main()
         Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
-            std::string sourceText = useTilesetInEditor ? "tileset" : "library";
+            std::string sourceText = "library";
             std::string editorTileText;
-            if (useTilesetInEditor && tilesetCount > 0) {
+            if (editorTileSource == 1 && tilesetCount > 0) {
+                sourceText = "tileset1";
                 editorTileText = "editor tile " + std::to_string(tilesetTile + 1) + "/" + std::to_string(tilesetCount) + " [" + sourceText + "] (x/z or wheel, 3 toggle)";
+            } else if (editorTileSource == 2 && platformCount > 0) {
+                sourceText = "platformer";
+                editorTileText = "editor tile " + std::to_string(platformTile + 1) + "/" + std::to_string(platformCount) + " [" + sourceText + "] (x/z or wheel, 4 toggle)";
+            } else if (editorTileSource == 3 && houseCount > 0) {
+                sourceText = "houses";
+                editorTileText = "editor tile " + std::to_string(houseTile + 1) + "/" + std::to_string(houseCount) + " [" + sourceText + "] (x/z or wheel, 5 toggle)";
             } else {
-                editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " [" + sourceText + "] (x/z or wheel, 3 toggle)";
+                editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " [" + sourceText + "] (x/z or wheel, 3/4/5 toggle)";
             }
             Text::DrawString(editorTileText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
         }
