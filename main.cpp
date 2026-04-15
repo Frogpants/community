@@ -738,7 +738,7 @@ int main()
                     editorTileSource = (editorTileSource == 3) ? 0 : 3;
                 }
 
-                if (Input::IsPressed("8")) {
+                if (Input::IsPressed("6")) {
                     editorTileSource = (editorTileSource == 4) ? 0 : 4;
                 }
 
@@ -987,8 +987,9 @@ int main()
         Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
-            std::string sourceText = "library";
-            std::string editorTileText;
+            std::string activeTilesetName = "library";
+            std::string activeToggleKey = "default";
+            std::string tilesetRowText;
             vec2 hintsHeaderPos = vec2(-screen.x + 40, screen.y - 370) / zoom;
 
             if (Input::IsPressed("enter")) {
@@ -996,22 +997,21 @@ int main()
             }
 
             if (editorTileSource == 1 && tilesetCount > 0) {
-                sourceText = "tileset1";
-                editorTileText = "editor tile " + std::to_string(tilesetTile + 1) + "/" + std::to_string(tilesetCount) + " [" + sourceText + "] (x/z or wheel, 3 toggle)";
+                activeTilesetName = "tileset1";
+                activeToggleKey = "3";
             } else if (editorTileSource == 2 && platformCount > 0) {
-                sourceText = "platformer";
-                editorTileText = "editor tile " + std::to_string(platformTile + 1) + "/" + std::to_string(platformCount) + " [" + sourceText + "] (x/z or wheel, 4 toggle)";
+                activeTilesetName = "platformer";
+                activeToggleKey = "4";
             } else if (editorTileSource == 3 && houseCount > 0) {
-                sourceText = "houses";
-                editorTileText = "editor tile " + std::to_string(houseTile + 1) + "/" + std::to_string(houseCount) + " [" + sourceText + "] (x/z or wheel, 5 toggle)";
+                activeTilesetName = "houses";
+                activeToggleKey = "5";
             } else if (editorTileSource == 4) {
-                sourceText = "tree spawn marker";
-                editorTileText = "editor tile [" + sourceText + "] (8 toggle)";
-            } else {
-                editorTileText = "editor tile " + std::to_string(tile + 1) + "/" + std::to_string(tileTextures.size()) + " [" + sourceText + "] (x/z or wheel, 3/4/5/8 toggle)";
+                activeTilesetName = "spawn marker";
+                activeToggleKey = "6";
             }
 
-            Text::DrawString(editorTileText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
+            tilesetRowText = "tileset: " + activeTilesetName + " (toggle " + activeToggleKey + ")";
+            Text::DrawString(tilesetRowText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
 
             std::string hintsHeaderText = std::string(editorHintsOpen ? "[-] " : "[+] ") + "press enter for text editor hints";
             Text::DrawString(hintsHeaderText, hintsHeaderPos, 16.0f / zoom, 1.5f);
@@ -1023,7 +1023,7 @@ int main()
                 Text::DrawString("3: tileset1 folder", vec2(-screen.x + 40, screen.y - 490) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("4: platformer folder", vec2(-screen.x + 40, screen.y - 520) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("5: houses", vec2(-screen.x + 40, screen.y - 550) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("8: spawn marker", vec2(-screen.x + 40, screen.y - 580) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("6: spawn marker", vec2(-screen.x + 40, screen.y - 580) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("x/z or wheel: select tile", vec2(-screen.x + 40, screen.y - 610) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("left click: place/remove", vec2(-screen.x + 40, screen.y - 640) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("q/e: prev/next room", vec2(-screen.x + 40, screen.y - 670) / zoom, 14.0f / zoom, 1.5f);
