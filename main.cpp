@@ -769,9 +769,13 @@ int main()
             if (abs(drawPos.x - camera.pos.x) < (screen.x / zoom) + drawHalf.x) {
                 if (abs(drawPos.y - camera.pos.y) < (screen.y / zoom) + drawHalf.y) {
                     if (t.id == treeSpawnMarkerTileId) {
-                        drawTreeSpawnMarkerTile(t.pos);
+                        if (mode) {
+                            drawTreeSpawnMarkerTile(t.pos);
+                        }
                     } else if (t.id == collisionMarkerTileId) {
-                        drawCollisionMarkerTile(t.pos);
+                        if (mode) {
+                            drawCollisionMarkerTile(t.pos);
+                        }
                     } else if (isHouse) {
                         drawHousePrefab(t, true, nullptr, nullptr);
                     } else if (t.id >= 0 && t.id < static_cast<int>(tileTextures.size())) {
