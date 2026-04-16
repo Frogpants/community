@@ -20,6 +20,7 @@
 #include <cmath>
 #include <string>
 #include <functional>
+#include <unordered_map>
 
 #include "game/player.hpp"
 #include "game/character.hpp"
@@ -204,7 +205,10 @@ std::vector<std::string> getCharacterTasks() {
 Character makeCharacterForRoom(int roomId, int stageIndex) {
     Character c;
     c.room = roomId;
-    c.pos = vec2(300.0f + (stageIndex * 96.0f), 0.0f);
+
+    int xBucket = ((roomId * 37) % 5) - 2;
+    int yBucket = ((roomId * 53) % 3) - 1;
+    c.pos = vec2(300.0f + static_cast<float>(xBucket * 80), static_cast<float>(yBucket * 64));
     c.target = c.pos;
     c.roamCenter = c.pos;
     c.name = "Character " + std::to_string(stageIndex + 1);
@@ -635,6 +639,7 @@ int main()
     GLuint selectTex = Image::Load("assets/interact-select.png");
     GLuint fixedDoorTex = Image::Load(fixedDoorTexturePath.c_str());
     std::vector<TreeProp> spawnedTrees;
+    std::unordered_map<int, vec2> roomReturnPositions;
 
     // Main Menu
 
@@ -1014,7 +1019,23 @@ int main()
 
                     if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
                         if (Input::IsPressed("e")) {
-                            player.room = (player.room == 0) ? door.roomId : 0;
+                            if (player.room == 0) {
+                                roomReturnPositions[door.roomId] = player.pos;
+                                player.room = door.roomId;
+                                player.pos = door.roomPos;
+                                camera.pos = player.pos;
+                                camera.target = player.pos;
+                            } else {
+                                player.room = 0;
+                                auto returnPos = roomReturnPositions.find(door.roomId);
+                                if (returnPos != roomReturnPositions.end()) {
+                                    player.pos = returnPos->second;
+                                } else {
+                                    player.pos = door.hubPos;
+                                }
+                                camera.pos = player.pos;
+                                camera.target = player.pos;
+                            }
                             break;
                         }
                     }
