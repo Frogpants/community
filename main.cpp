@@ -142,6 +142,7 @@ bool editorPrevRoomHeld = false;
 bool editorHintsOpen = false;
 
 const int treeSpawnMarkerTileId = -100;
+const int collisionMarkerTileId = -101;
 
 struct TreeProp {
     vec2 pos = vec2(0.0f);
@@ -266,6 +267,58 @@ void drawTreeSpawnMarkerTile(const vec2& pos)
     glEnd();
 
     glPopMatrix();
+}
+
+void drawCollisionMarkerTile(const vec2& pos)
+{
+    const vec2 halfSize = vec2(32.0f);
+
+    glPushMatrix();
+    glTranslatef(pos.x, pos.y, 0.0f);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glColor4f(1.0f, 0.2f, 0.2f, 1.0f);
+    glLineWidth(2.0f);
+
+    glBegin(GL_LINE_LOOP);
+        glVertex2f(-halfSize.x, -halfSize.y);
+        glVertex2f( halfSize.x, -halfSize.y);
+        glVertex2f( halfSize.x,  halfSize.y);
+        glVertex2f(-halfSize.x,  halfSize.y);
+    glEnd();
+
+    glPopMatrix();
+}
+
+bool collidesWithCollisionMarker(const vec2& pos, const vec2& dim, int room, const std::vector<Tile>& tiles)
+{
+    for (const Tile& tile : tiles) {
+        if (tile.room != room || tile.id != collisionMarkerTileId) {
+            continue;
+        }
+
+        if (BoxCollide(pos, dim, tile.pos, vec2(32.0f))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+vec2 moveWithCollisionMarkers(const vec2& currentPos, const vec2& dim, const vec2& delta, int room, const std::vector<Tile>& tiles)
+{
+    vec2 resolvedPos = currentPos;
+
+    vec2 tryX = vec2(currentPos.x + delta.x, currentPos.y);
+    if (!collidesWithCollisionMarker(tryX, dim, room, tiles)) {
+        resolvedPos.x = tryX.x;
+    }
+
+    vec2 tryY = vec2(resolvedPos.x, currentPos.y + delta.y);
+    if (!collidesWithCollisionMarker(tryY, dim, room, tiles)) {
+        resolvedPos.y = tryY.y;
+    }
+
+    return resolvedPos;
 }
 
 void spawnTreeOnMarkerForRoom(const std::vector<Tile>& tiles, std::vector<TreeProp>& trees, int room)
@@ -661,6 +714,8 @@ int main()
                 if (abs(drawPos.y - camera.pos.y) < (screen.y / zoom) + drawHalf.y) {
                     if (t.id == treeSpawnMarkerTileId) {
                         drawTreeSpawnMarkerTile(t.pos);
+                    } else if (t.id == collisionMarkerTileId) {
+                        drawCollisionMarkerTile(t.pos);
                     } else if (isHouse) {
                         drawHousePrefab(t, true, nullptr, nullptr);
                     } else if (t.id >= 0 && t.id < static_cast<int>(tileTextures.size())) {
@@ -742,6 +797,10 @@ int main()
                     editorTileSource = (editorTileSource == 4) ? 0 : 4;
                 }
 
+                if (Input::IsPressed("7")) {
+                    editorTileSource = (editorTileSource == 5) ? 0 : 5;
+                }
+
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
                 t.room = player.room;
@@ -821,6 +880,8 @@ int main()
                     t.id = houseStartId + houseTile;
                 } else if (editorTileSource == 4) {
                     t.id = treeSpawnMarkerTileId;
+                } else if (editorTileSource == 5) {
+                    t.id = collisionMarkerTileId;
                 } else {
                     t.id = tile;
                 }
@@ -828,6 +889,8 @@ int main()
                 if (selectMode == 0 && tileCount > 0) {
                     if (editorTileSource == 4) {
                         drawTreeSpawnMarkerTile(t.pos);
+                    } else if (editorTileSource == 5) {
+                        drawCollisionMarkerTile(t.pos);
                     } else if (editorTileSource == 1 && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
                         drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, tilesetTile, t.pos);
                     } else if (editorTileSource == 2 && platformCount > 0 && platformTexture != 0 && platformCols > 0 && platformRows > 0) {
@@ -868,7 +931,14 @@ int main()
                 camera.follow();
 
                 player.controls();
-                player.pos = player.pos + player.vel;
+                vec2 oldPlayerPos = player.pos;
+                player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel, player.room, tiles);
+                if (player.pos.x == oldPlayerPos.x) {
+                    player.vel.x = 0.0f;
+                }
+                if (player.pos.y == oldPlayerPos.y) {
+                    player.vel.y = 0.0f;
+                }
                 multiplayer.sync(player.pos);
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
@@ -900,7 +970,12 @@ int main()
                 }
 
                 if (currentCharacter != nullptr && currentCharacter->isRoaming) {
+                    vec2 oldCharacterPos = currentCharacter->pos;
                     currentCharacter->roam();
+                    if (collidesWithCollisionMarker(currentCharacter->pos, currentCharacter->dim, currentCharacter->room, tiles)) {
+                        currentCharacter->pos = oldCharacterPos;
+                        currentCharacter->roamTimer = 0.0f;
+                    }
                 }
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
@@ -1008,6 +1083,9 @@ int main()
             } else if (editorTileSource == 4) {
                 activeTilesetName = "spawn marker";
                 activeToggleKey = "6";
+            } else if (editorTileSource == 5) {
+                activeTilesetName = "collision marker";
+                activeToggleKey = "7";
             }
 
             tilesetRowText = "tileset: " + activeTilesetName + " (toggle " + activeToggleKey + ")";
@@ -1024,9 +1102,10 @@ int main()
                 Text::DrawString("4: platformer folder", vec2(-screen.x + 40, screen.y - 520) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("5: houses", vec2(-screen.x + 40, screen.y - 550) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("6: spawn marker", vec2(-screen.x + 40, screen.y - 580) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("x/z or wheel: select tile", vec2(-screen.x + 40, screen.y - 610) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("left click: place/remove", vec2(-screen.x + 40, screen.y - 640) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("q/e: prev/next room", vec2(-screen.x + 40, screen.y - 670) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("7: collision marker", vec2(-screen.x + 40, screen.y - 610) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("x/z or wheel: select tile", vec2(-screen.x + 40, screen.y - 640) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("left click: place/remove", vec2(-screen.x + 40, screen.y - 670) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("q/e: prev/next room", vec2(-screen.x + 40, screen.y - 700) / zoom, 14.0f / zoom, 1.5f);
             }
         }
 
