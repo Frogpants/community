@@ -245,6 +245,13 @@ void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int
     }
 
     const int roomId = nextRoomId;
+
+    if (roomId - 1 < 0 || roomId - 1 >= static_cast<int>(hubDoorPositions.size())) {
+        std::cout << "no more identifiable houses for another door" << std::endl;
+        completedCharacter.nextStageSpawned = true;
+        return;
+    }
+
     nextRoomId += 1;
 
     doors.push_back(makeDoorForRoom(roomId, hubDoorPositions));
@@ -611,7 +618,11 @@ int main()
     characters[0].texture = Image::Load("assets/npcs/character.png");
 
     std::vector<Door> doors;
-    doors.push_back(makeDoorForRoom(1, hubDoorPositions));
+    if (!hubDoorPositions.empty()) {
+        doors.push_back(makeDoorForRoom(1, hubDoorPositions));
+    } else {
+        std::cout << "no identifiable houses found for door placement" << std::endl;
+    }
     int nextRoomId = 2;
 
     GLuint taskTex = Image::Load("assets/box.png");
