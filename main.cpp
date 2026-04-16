@@ -151,7 +151,7 @@ struct TreeProp {
 
 const std::string fixedDoorTexturePath = "assets/door.png";
 const vec2 fixedDoorPosition = vec2(128.0f, 32.0f);
-const vec2 fixedDoorSize = vec2(32.0f, 64.0f);
+const vec2 fixedDoorSize = vec2(32.0f, 32.0f);
 const float doorSpacing = 112.0f;
 
 float zoom = 2.0;
@@ -217,10 +217,14 @@ Character makeCharacterForRoom(int roomId, int stageIndex) {
     return c;
 }
 
-Door makeDoorForRoom(int roomId) {
+Door makeDoorForRoom(int roomId, const std::vector<vec2>& hubDoorPositions) {
     Door door;
     door.roomId = roomId;
-    door.hubPos = fixedDoorPosition + vec2(doorSpacing * static_cast<float>(roomId - 1), 0.0f);
+    if (roomId - 1 >= 0 && roomId - 1 < static_cast<int>(hubDoorPositions.size())) {
+        door.hubPos = hubDoorPositions[roomId - 1];
+    } else {
+        door.hubPos = fixedDoorPosition + vec2(doorSpacing * static_cast<float>(roomId - 1), 0.0f);
+    }
     door.roomPos = fixedDoorPosition;
     door.dim = fixedDoorSize;
     return door;
@@ -235,7 +239,7 @@ Character* getCharacterForRoom(std::vector<Character>& chars, int roomId) {
     return nullptr;
 }
 
-void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int& nextRoomId, Character& completedCharacter) {
+void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int& nextRoomId, Character& completedCharacter, const std::vector<vec2>& hubDoorPositions) {
     if (completedCharacter.nextStageSpawned) {
         return;
     }
@@ -243,7 +247,7 @@ void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int
     const int roomId = nextRoomId;
     nextRoomId += 1;
 
-    doors.push_back(makeDoorForRoom(roomId));
+    doors.push_back(makeDoorForRoom(roomId, hubDoorPositions));
     chars.push_back(makeCharacterForRoom(roomId, roomId - 1));
     chars.back().texture = Image::Load("assets/npcs/character.png");
     completedCharacter.nextStageSpawned = true;
@@ -560,6 +564,42 @@ int main()
     }
     houseCount = static_cast<int>(houseTextures.size());
 
+    auto getHubHouseDoorPositions = [&](const std::vector<Tile>& mapTiles) {
+        std::vector<vec2> positions;
+
+        for (const Tile& tile : mapTiles) {
+            if (tile.room != 0) {
+                continue;
+            }
+
+            if (tile.id < houseStartId || tile.id >= houseStartId + houseCount) {
+                continue;
+            }
+
+            int houseIndex = tile.id - houseStartId;
+            if (houseIndex < 0 || houseIndex >= static_cast<int>(houseFootprints.size())) {
+                continue;
+            }
+
+            vec2 footprint = houseFootprints[houseIndex];
+            vec2 drawHalf = vec2(footprint.x * 32.0f, footprint.y * 32.0f);
+            vec2 drawPos = tile.pos + vec2((footprint.x - 1.0f) * 32.0f, (footprint.y - 1.0f) * 32.0f);
+
+            float rightEdge = drawPos.x + drawHalf.x;
+            float bottomEdge = drawPos.y - drawHalf.y;
+            vec2 doorPos = vec2(rightEdge - 64.0f, bottomEdge + 32.0f);
+            positions.push_back(doorPos);
+        }
+
+        std::sort(positions.begin(), positions.end(), [](const vec2& a, const vec2& b) {
+            return a.x < b.x;
+        });
+
+        return positions;
+    };
+
+    std::vector<vec2> hubDoorPositions = getHubHouseDoorPositions(tiles);
+
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -571,7 +611,7 @@ int main()
     characters[0].texture = Image::Load("assets/npcs/character.png");
 
     std::vector<Door> doors;
-    doors.push_back(makeDoorForRoom(1));
+    doors.push_back(makeDoorForRoom(1, hubDoorPositions));
     int nextRoomId = 2;
 
     GLuint taskTex = Image::Load("assets/box.png");
@@ -1017,7 +1057,7 @@ int main()
                         if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                             completedCharacter->isRoaming = true;
                             spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
-                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter);
+                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
                         }
                     }
                 }
