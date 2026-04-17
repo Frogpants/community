@@ -278,12 +278,10 @@ namespace Minigames {
             std::string plateGoalText = "drag all " + std::to_string(washDishes.plateCount) + " plates from table to sink";
             Text::DrawStringCentered(plateGoalText, vec2(0.0f, -panelHalf.y + 58.0f), 14.0f / zoom, 2.1f);
         } else if (washDishes.phase == WashPhase::PopBubbles) {
-            if (washDishes.bubbleSpawned < washDishes.bubbleTarget) {
-                washDishes.bubbleSpawnTimer -= 1;
-                if (washDishes.bubbleSpawnTimer <= 0) {
-                    SpawnBubble(sinkCenter, zoneHalf - vec2(16.0f));
-                    washDishes.bubbleSpawnTimer = 28 + (std::rand() % 34);
-                }
+            washDishes.bubbleSpawnTimer -= 1;
+            if (washDishes.bubbleSpawnTimer <= 0) {
+                SpawnBubble(sinkCenter, zoneHalf - vec2(16.0f));
+                washDishes.bubbleSpawnTimer = 28 + (std::rand() % 34);
             }
 
             if (Mouse::IsPressed(0)) {
@@ -325,13 +323,20 @@ namespace Minigames {
                 DrawBubble(bubble);
             }
 
-            if (washDishes.bubbleMissed >= 3) {
-                washDishes.phase = WashPhase::Lost;
-            } else if (washDishes.bubblePopped >= washDishes.bubbleTarget) {
+            vec2 finishCenter = vec2(0.0f, -panelHalf.y + 148.0f);
+            vec2 finishHalf = vec2(120.0f, 24.0f);
+            bool hoveringFinish = BoxCollide(mouseUI, vec2(0.0f), finishCenter, finishHalf);
+            Image::DrawRect(finishCenter, finishHalf, hoveringFinish ? 0.22f : 0.30f, hoveringFinish ? 0.70f : 0.62f, 0.28f, 1.0f, 0.0f);
+            Text::DrawStringCentered("finish wash", finishCenter - vec2(0.0f, 6.0f), 15.0f / zoom, 2.1f);
+            if (hoveringFinish && Mouse::IsPressed(0)) {
                 washDishes.phase = WashPhase::Won;
             }
 
-            std::string progressText = "popped " + std::to_string(washDishes.bubblePopped) + " of " + std::to_string(washDishes.bubbleTarget);
+            if (washDishes.bubbleMissed >= 3) {
+                washDishes.phase = WashPhase::Lost;
+            }
+
+            std::string progressText = "popped " + std::to_string(washDishes.bubblePopped);
             std::string missText = "missed " + std::to_string(washDishes.bubbleMissed) + " of 3";
             Text::DrawStringCentered("click bubbles before they disappear", vec2(0.0f, -panelHalf.y + 48.0f), 14.0f / zoom, 2.1f);
             Text::DrawStringCentered(progressText, vec2(0.0f, -panelHalf.y + 82.0f), 13.0f / zoom, 2.0f);
