@@ -56,14 +56,49 @@ namespace Minigames {
         bool completionSent = false;
     };
 
+    enum class TrashPhase {
+        CollectFloorTrash,
+        GoOutsidePrompt
+    };
+
+    struct TrashItem {
+        vec2 pos = vec2(0.0f);
+        vec2 home = vec2(0.0f);
+        vec2 size = vec2(24.0f);
+        bool inBin = false;
+        int textureIndex = 0;
+    };
+
+    struct TakeOutTrashState {
+        bool initialized = false;
+        GLuint binTexture = 0;
+        GLuint outsideTrashcanTexture = 0;
+        std::vector<GLuint> trashTextures;
+
+        std::vector<TrashItem> items;
+        int draggingItem = -1;
+        vec2 dragOffset = vec2(0.0f);
+
+        TrashPhase phase = TrashPhase::CollectFloorTrash;
+        bool outsideDropoffPending = false;
+        vec2 outsideTrashcanPos = vec2(220.0f, -250.0f);
+    };
+
     inline bool taskOpen = false;
     inline bool taskCompleteRequested = false;
     inline int activeTaskIndex = -1;
     inline std::string activeTaskName;
+    inline int completionTaskIndex = -1;
+    inline std::string completionTaskName;
     inline WashDishesState washDishes;
+    inline TakeOutTrashState takeOutTrash;
 
     inline bool IsWashDishesTask() {
         return activeTaskName == "wash dishes";
+    }
+
+    inline bool IsTakeOutTrashTask() {
+        return activeTaskName == "take out trash";
     }
 
     inline void ResetWashDishesState() {
@@ -80,6 +115,14 @@ namespace Minigames {
         washDishes.platePositions.clear();
         washDishes.plateHomePositions.clear();
         washDishes.plateInSink.clear();
+    }
+
+    inline void ResetTakeOutTrashState() {
+        takeOutTrash.initialized = false;
+        takeOutTrash.draggingItem = -1;
+        takeOutTrash.dragOffset = vec2(0.0f);
+        takeOutTrash.phase = takeOutTrash.outsideDropoffPending ? TrashPhase::GoOutsidePrompt : TrashPhase::CollectFloorTrash;
+        takeOutTrash.items.clear();
     }
 
     inline void InitializeWashDishesAssets() {
@@ -124,6 +167,52 @@ namespace Minigames {
         }
     }
 
+    inline void InitializeTakeOutTrashAssets() {
+        auto loadTrashTexture = [](const std::string& relativePath) {
+            std::vector<std::string> candidates = {
+                "dist/assets/minigames/take out trash/" + relativePath,
+                "assets/minigames/take out trash/" + relativePath,
+                "dist/assets/minigames/take_out_trash/" + relativePath,
+                "assets/minigames/take_out_trash/" + relativePath
+            };
+
+            for (const std::string& path : candidates) {
+                GLuint tex = Image::Load(path.c_str());
+                if (tex != 0) {
+                    return tex;
+                }
+            }
+
+            return 0u;
+        };
+
+        if (takeOutTrash.binTexture == 0) {
+            takeOutTrash.binTexture = loadTrashTexture("bin_placeholder.png");
+            if (takeOutTrash.binTexture == 0) {
+                takeOutTrash.binTexture = loadTrashTexture("bin.png");
+            }
+        }
+
+        if (takeOutTrash.outsideTrashcanTexture == 0) {
+            takeOutTrash.outsideTrashcanTexture = loadTrashTexture("outside_trashcan_placeholder.png");
+            if (takeOutTrash.outsideTrashcanTexture == 0) {
+                takeOutTrash.outsideTrashcanTexture = loadTrashTexture("outside_trashcan.png");
+            }
+        }
+
+        if (takeOutTrash.trashTextures.empty()) {
+            std::vector<std::string> names = {
+                "trash_item_placeholder_1.png",
+                "trash_item_placeholder_2.png",
+                "trash_item_placeholder_3.png"
+            };
+
+            for (const std::string& name : names) {
+                takeOutTrash.trashTextures.push_back(loadTrashTexture(name));
+            }
+        }
+    }
+
     inline void BuildPlateSlots(vec2 tableCenter, vec2 tableHalf) {
         washDishes.plateHomePositions.clear();
         washDishes.platePositions.clear();
@@ -145,6 +234,33 @@ namespace Minigames {
         }
 
         washDishes.initialized = true;
+    }
+
+    inline void BuildTrashItems(vec2 areaCenter, vec2 areaHalf) {
+        takeOutTrash.items.clear();
+
+        const int totalItems = 7;
+        const int cols = 3;
+        const float spacingX = 92.0f;
+        const float spacingY = 84.0f;
+        const float startX = areaCenter.x - spacingX;
+        const float startY = areaCenter.y + areaHalf.y - 92.0f;
+
+        for (int i = 0; i < totalItems; ++i) {
+            int col = i % cols;
+            int row = i / cols;
+
+            TrashItem item;
+            item.pos = vec2(startX + static_cast<float>(col) * spacingX, startY - static_cast<float>(row) * spacingY);
+            item.home = item.pos;
+            item.size = vec2(24.0f + static_cast<float>((i % 2) * 4));
+            item.inBin = false;
+            item.textureIndex = i % 3;
+
+            takeOutTrash.items.push_back(item);
+        }
+
+        takeOutTrash.initialized = true;
     }
 
     inline void DrawPlate(const vec2& pos, float size) {
@@ -186,6 +302,18 @@ namespace Minigames {
         float brightness = 0.45f + 0.45f * lifeRatio;
         Image::DrawRect(bubble.pos, vec2(bubble.radius), 0.55f, 0.78f, brightness, 0.72f, 0.0f);
         Image::DrawRect(bubble.pos + vec2(6.0f, 6.0f), vec2(bubble.radius * 0.22f), 0.92f, 0.98f, 1.0f, 0.9f, 0.0f);
+    }
+
+    inline void DrawTrashItem(const TrashItem& item) {
+        if (item.textureIndex >= 0 && item.textureIndex < static_cast<int>(takeOutTrash.trashTextures.size())) {
+            GLuint tex = takeOutTrash.trashTextures[item.textureIndex];
+            if (tex != 0) {
+                Image::Draw(tex, item.pos, item.size.x, 0.0f);
+                return;
+            }
+        }
+
+        Image::DrawRect(item.pos, item.size, 0.45f, 0.47f, 0.42f, 1.0f, 0.0f);
     }
 
     inline void DrawGenericTaskContent(float zoom) {
@@ -347,6 +475,8 @@ namespace Minigames {
             Text::DrawStringCentered("task complete", vec2(0.0f, -36.0f), 16.0f / zoom, 2.1f);
 
             if (!washDishes.completionSent) {
+                completionTaskIndex = activeTaskIndex;
+                completionTaskName = activeTaskName;
                 taskCompleteRequested = true;
                 washDishes.completionSent = true;
             }
@@ -368,6 +498,133 @@ namespace Minigames {
         }
     }
 
+    inline void DrawTakeOutTrashContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
+        InitializeTakeOutTrashAssets();
+
+        vec2 floorCenter = vec2(-panelHalf.x * 0.34f, -16.0f);
+        vec2 floorHalf = vec2(panelHalf.x * 0.40f, panelHalf.y * 0.58f);
+        vec2 binCenter = vec2(0.0f, -20.0f);
+        vec2 binHalf = vec2(72.0f, 88.0f);
+
+        if (!takeOutTrash.initialized) {
+            BuildTrashItems(floorCenter, floorHalf);
+        }
+
+        if (takeOutTrash.phase == TrashPhase::CollectFloorTrash) {
+            Image::DrawRect(floorCenter, floorHalf, 0.86f, 0.84f, 0.80f, 1.0f, 0.0f);
+            Text::DrawStringCentered("floor trash", floorCenter + vec2(0.0f, floorHalf.y + 24.0f), 14.0f / zoom, 2.1f);
+
+            if (takeOutTrash.binTexture != 0) {
+                Image::Draw(takeOutTrash.binTexture, binCenter, vec2(binHalf.x, binHalf.y), 0.0f);
+            } else {
+                Image::DrawRect(binCenter, binHalf, 0.22f, 0.28f, 0.22f, 1.0f, 0.0f);
+                Image::DrawRect(binCenter + vec2(0.0f, binHalf.y + 8.0f), vec2(binHalf.x + 10.0f, 10.0f), 0.14f, 0.20f, 0.14f, 1.0f, 0.0f);
+            }
+            Text::DrawStringCentered("bin", binCenter + vec2(0.0f, binHalf.y + 30.0f), 14.0f / zoom, 2.1f);
+
+            if (takeOutTrash.draggingItem == -1 && Mouse::IsPressed(0)) {
+                for (int i = static_cast<int>(takeOutTrash.items.size()) - 1; i >= 0; --i) {
+                    if (takeOutTrash.items[i].inBin) {
+                        continue;
+                    }
+
+                    if (BoxCollide(mouseUI, vec2(0.0f), takeOutTrash.items[i].pos, takeOutTrash.items[i].size)) {
+                        takeOutTrash.draggingItem = i;
+                        takeOutTrash.dragOffset = takeOutTrash.items[i].pos - mouseUI;
+                        break;
+                    }
+                }
+            }
+
+            if (takeOutTrash.draggingItem != -1) {
+                TrashItem& dragged = takeOutTrash.items[takeOutTrash.draggingItem];
+                if (Mouse::IsDown(0)) {
+                    dragged.pos = mouseUI + takeOutTrash.dragOffset;
+                } else {
+                    bool droppedInBin = BoxCollide(dragged.pos, dragged.size, binCenter, binHalf);
+                    if (droppedInBin) {
+                        dragged.inBin = true;
+                    } else {
+                        dragged.pos = dragged.home;
+                    }
+                    takeOutTrash.draggingItem = -1;
+                }
+            }
+
+            int placedCount = 0;
+            for (TrashItem& item : takeOutTrash.items) {
+                if (item.inBin) {
+                    int row = placedCount / 3;
+                    int col = placedCount % 3;
+                    item.pos = binCenter + vec2(-26.0f + static_cast<float>(col) * 26.0f, 28.0f - static_cast<float>(row) * 26.0f);
+                    placedCount += 1;
+                }
+                DrawTrashItem(item);
+            }
+
+            std::string progress = "trash in bin " + std::to_string(placedCount) + " / " + std::to_string(static_cast<int>(takeOutTrash.items.size()));
+            Text::DrawStringCentered("drag trash into the center bin", vec2(0.0f, -panelHalf.y + 58.0f), 14.0f / zoom, 2.1f);
+            Text::DrawStringCentered(progress, vec2(0.0f, -panelHalf.y + 92.0f), 13.0f / zoom, 2.0f);
+
+            if (placedCount >= static_cast<int>(takeOutTrash.items.size())) {
+                takeOutTrash.phase = TrashPhase::GoOutsidePrompt;
+            }
+        }
+
+        if (takeOutTrash.phase == TrashPhase::GoOutsidePrompt) {
+            Image::DrawRect(vec2(0.0f, -22.0f), vec2(panelHalf.x * 0.72f, 95.0f), 0.78f, 0.86f, 0.95f, 1.0f, 0.0f);
+            Text::DrawStringCentered("all trash collected", vec2(0.0f, 8.0f), 18.0f / zoom, 2.1f);
+            Text::DrawStringCentered("go outside and press e at trashcan", vec2(0.0f, -30.0f), 14.0f / zoom, 2.0f);
+
+            vec2 continueCenter = vec2(0.0f, -84.0f);
+            vec2 continueHalf = vec2(140.0f, 24.0f);
+            bool hoveringContinue = BoxCollide(mouseUI, vec2(0.0f), continueCenter, continueHalf);
+            Image::DrawRect(continueCenter, continueHalf, hoveringContinue ? 0.22f : 0.29f, hoveringContinue ? 0.60f : 0.52f, 0.28f, 1.0f, 0.0f);
+            Text::DrawStringCentered("go outside", continueCenter - vec2(0.0f, 6.0f), 15.0f / zoom, 2.1f);
+
+            if (hoveringContinue && Mouse::IsPressed(0)) {
+                takeOutTrash.outsideDropoffPending = true;
+                taskOpen = false;
+                activeTaskIndex = -1;
+                activeTaskName.clear();
+                return;
+            }
+        }
+    }
+
+    inline void DrawTakeOutTrashWorldPrompt(int playerRoom, float zoom) {
+        if (!takeOutTrash.outsideDropoffPending || playerRoom != 0) {
+            return;
+        }
+
+        if (takeOutTrash.outsideTrashcanTexture != 0) {
+            Image::Draw(takeOutTrash.outsideTrashcanTexture, takeOutTrash.outsideTrashcanPos, vec2(48.0f, 64.0f), 0.0f);
+        } else {
+            Image::DrawRect(takeOutTrash.outsideTrashcanPos, vec2(42.0f, 58.0f), 0.18f, 0.24f, 0.20f, 1.0f, 0.0f);
+        }
+
+        Text::DrawStringCentered("press e", takeOutTrash.outsideTrashcanPos + vec2(0.0f, 78.0f), 13.0f / zoom, 2.0f);
+    }
+
+    inline void TryTakeOutTrashOutsideDropoff(vec2 playerPos, vec2 playerDim, int playerRoom, bool interactPressed) {
+        if (!takeOutTrash.outsideDropoffPending || playerRoom != 0) {
+            return;
+        }
+
+        if (!BoxCollide(playerPos, playerDim, takeOutTrash.outsideTrashcanPos, vec2(64.0f, 82.0f))) {
+            return;
+        }
+
+        if (!interactPressed) {
+            return;
+        }
+
+        takeOutTrash.outsideDropoffPending = false;
+        completionTaskIndex = -1;
+        completionTaskName = "take out trash";
+        taskCompleteRequested = true;
+    }
+
     inline void OpenTask(int taskIndex, const std::string& taskName) {
         taskOpen = true;
         taskCompleteRequested = false;
@@ -376,6 +633,10 @@ namespace Minigames {
 
         if (IsWashDishesTask()) {
             ResetWashDishesState();
+        }
+
+        if (IsTakeOutTrashTask()) {
+            ResetTakeOutTrashState();
         }
     }
 
@@ -386,6 +647,10 @@ namespace Minigames {
 
         if (IsWashDishesTask()) {
             ResetWashDishesState();
+        }
+
+        if (IsTakeOutTrashTask()) {
+            ResetTakeOutTrashState();
         }
 
         activeTaskName.clear();
@@ -405,6 +670,8 @@ namespace Minigames {
 
     inline void RequestTaskComplete() {
         if (taskOpen) {
+            completionTaskIndex = activeTaskIndex;
+            completionTaskName = activeTaskName;
             taskCompleteRequested = true;
         }
     }
@@ -416,6 +683,14 @@ namespace Minigames {
 
         taskCompleteRequested = false;
         return true;
+    }
+
+    inline int GetCompletionTaskIndex() {
+        return completionTaskIndex;
+    }
+
+    inline const std::string& GetCompletionTaskName() {
+        return completionTaskName;
     }
 
     inline bool DrawTaskPopup(vec2 screen, float zoom, vec2 mouseUI) {
@@ -447,6 +722,8 @@ namespace Minigames {
 
         if (IsWashDishesTask()) {
             DrawWashDishesContent(panelHalf, zoom, mouseUI);
+        } else if (IsTakeOutTrashTask()) {
+            DrawTakeOutTrashContent(panelHalf, zoom, mouseUI);
         } else {
             DrawGenericTaskContent(zoom);
         }

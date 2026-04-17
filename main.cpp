@@ -1058,6 +1058,8 @@ int main()
                     }
                 }
 
+                Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
+
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }
 
@@ -1081,6 +1083,8 @@ int main()
             ++id;
             Image::Draw(taskTex, t.pos, 45.0);
         }
+
+        Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
 
         Image::Draw(player.texture, player.pos, 150);
         multiplayer.drawRemotePlayers(player.texture);
@@ -1177,34 +1181,43 @@ int main()
         if (Minigames::IsTaskOpen()) {
             vec2 mouseUI = GetMouseUI(window);
             Minigames::DrawTaskPopup(screen, zoom, mouseUI);
+        }
 
-            if (Minigames::ConsumeTaskCompleteRequest()) {
-                int activeTaskIndex = Minigames::GetActiveTaskIndex();
-                if (activeTaskIndex >= 0 && activeTaskIndex < static_cast<int>(objectives.size())) {
-                    Task completedTask = objectives[activeTaskIndex];
-                    Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
-
-                    objectives.erase(objectives.begin() + activeTaskIndex);
-                    if (!completedTask.name.empty()) {
-                        auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTask.name);
-                        if (taskIt != player.tasks.end()) {
-                            player.tasks.erase(taskIt);
-                        }
+        if (Minigames::ConsumeTaskCompleteRequest()) {
+            int activeTaskIndex = Minigames::GetCompletionTaskIndex();
+            if ((activeTaskIndex < 0 || activeTaskIndex >= static_cast<int>(objectives.size())) && !Minigames::GetCompletionTaskName().empty()) {
+                for (int objectiveIndex = 0; objectiveIndex < static_cast<int>(objectives.size()); ++objectiveIndex) {
+                    if (objectives[objectiveIndex].name == Minigames::GetCompletionTaskName()) {
+                        activeTaskIndex = objectiveIndex;
+                        break;
                     }
+                }
+            }
 
-                    if (completedCharacter != nullptr) {
-                        completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
-                        completedCharacter->level = completedCharacter->tasksCompleted * 30;
-                        if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
-                            completedCharacter->isRoaming = true;
-                            spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
-                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
-                        }
+            if (activeTaskIndex >= 0 && activeTaskIndex < static_cast<int>(objectives.size())) {
+                Task completedTask = objectives[activeTaskIndex];
+                Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
+
+                objectives.erase(objectives.begin() + activeTaskIndex);
+                if (!completedTask.name.empty()) {
+                    auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTask.name);
+                    if (taskIt != player.tasks.end()) {
+                        player.tasks.erase(taskIt);
                     }
                 }
 
-                Minigames::CloseTask();
+                if (completedCharacter != nullptr) {
+                    completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
+                    completedCharacter->level = completedCharacter->tasksCompleted * 30;
+                    if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
+                        completedCharacter->isRoaming = true;
+                        spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
+                        spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
+                    }
+                }
             }
+
+            Minigames::CloseTask();
         }
 
         if (!running) {
