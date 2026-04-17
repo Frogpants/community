@@ -41,6 +41,7 @@ public:
 #endif
 #include "game/tile.hpp"
 #include "game/task.hpp"
+#include "game/minigames.hpp"
 
 #include "core/manager.hpp"
 #include "core/essentials.hpp"
@@ -461,6 +462,7 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     int taskId = character.tasksGiven;
     Task task;
     task.id = taskId;
+    task.name = character.tasks[taskId];
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
     objectives.push_back(task);
@@ -990,20 +992,22 @@ int main()
                 camera.target = player.pos;
                 camera.follow();
 
-                player.controls();
-                vec2 oldPlayerPos = player.pos;
-                player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel, player.room, tiles);
-                if (player.pos.x == oldPlayerPos.x) {
-                    player.vel.x = 0.0f;
+                if (!Minigames::IsTaskOpen()) {
+                    player.controls();
+                    vec2 oldPlayerPos = player.pos;
+                    player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel, player.room, tiles);
+                    if (player.pos.x == oldPlayerPos.x) {
+                        player.vel.x = 0.0f;
+                    }
+                    if (player.pos.y == oldPlayerPos.y) {
+                        player.vel.y = 0.0f;
+                    }
+                    multiplayer.sync(player.pos);
                 }
-                if (player.pos.y == oldPlayerPos.y) {
-                    player.vel.y = 0.0f;
-                }
-                multiplayer.sync(player.pos);
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
 
-                if (currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
+                if (!Minigames::IsTaskOpen() && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
                     if (currentCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
                     } else if (addTaskForCharacter(*currentCharacter, player)) {
@@ -1071,32 +1075,8 @@ int main()
                 continue;
             }
 
-            if (BoxCollide(player.pos, player.dim, t.pos, t.dim)) {
-                if (Input::IsPressed("e")) {
-                    Character* completedCharacter = getCharacterForRoom(characters, t.room);
-                    std::string completedTaskName;
-                    if (completedCharacter != nullptr && t.id >= 0 && t.id < static_cast<int>(completedCharacter->tasks.size())) {
-                        completedTaskName = completedCharacter->tasks[t.id];
-                    }
-
-                    objectives.erase(objectives.begin() + id);
-                    if (!completedTaskName.empty()) {
-                        auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTaskName);
-                        if (taskIt != player.tasks.end()) {
-                            player.tasks.erase(taskIt);
-                        }
-                    }
-
-                    if (completedCharacter != nullptr) {
-                        completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
-                        completedCharacter->level = completedCharacter->tasksCompleted * 30;
-                        if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
-                            completedCharacter->isRoaming = true;
-                            spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
-                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
-                        }
-                    }
-                }
+            if (!Minigames::IsTaskOpen() && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
+                Minigames::OpenTask(id, t.name);
             }
             ++id;
             Image::Draw(taskTex, t.pos, 45.0);
@@ -1192,6 +1172,39 @@ int main()
             taskText = "- " + t;
             Text::DrawString(taskText, vec2(screen.x - 600, screen.y - y) / zoom, 24.0f / zoom, 1.5f);
             y += 64.0;
+        }
+
+        if (Minigames::IsTaskOpen()) {
+            vec2 mouseUI = GetMouseUI(window);
+            Minigames::DrawTaskPopup(screen, zoom, mouseUI);
+
+            if (Minigames::ConsumeTaskCompleteRequest()) {
+                int activeTaskIndex = Minigames::GetActiveTaskIndex();
+                if (activeTaskIndex >= 0 && activeTaskIndex < static_cast<int>(objectives.size())) {
+                    Task completedTask = objectives[activeTaskIndex];
+                    Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
+
+                    objectives.erase(objectives.begin() + activeTaskIndex);
+                    if (!completedTask.name.empty()) {
+                        auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTask.name);
+                        if (taskIt != player.tasks.end()) {
+                            player.tasks.erase(taskIt);
+                        }
+                    }
+
+                    if (completedCharacter != nullptr) {
+                        completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
+                        completedCharacter->level = completedCharacter->tasksCompleted * 30;
+                        if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
+                            completedCharacter->isRoaming = true;
+                            spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
+                            spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
+                        }
+                    }
+                }
+
+                Minigames::CloseTask();
+            }
         }
 
         if (!running) {
