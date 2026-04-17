@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <numeric>
 
 namespace Minigames {
 
@@ -74,24 +75,38 @@ namespace Minigames {
         GLuint binTexture = 0;
         GLuint outsideTrashcanTexture = 0;
         std::vector<GLuint> trashTextures;
+        int activeTrashCount = 4;
 
         std::vector<TrashItem> items;
         int draggingItem = -1;
         vec2 dragOffset = vec2(0.0f);
 
         TrashPhase phase = TrashPhase::CollectFloorTrash;
-        bool outsideDropoffPending = false;
-        vec2 outsideTrashcanPos = vec2(220.0f, -250.0f);
+    };
+
+    struct PendingTrashDropoff {
+        std::string taskName;
+        int taskRoom = -1;
+        vec2 worldPos = vec2(0.0f);
+        bool hasWorldPos = false;
+        bool active = true;
+        bool readyForInteract = false;
     };
 
     inline bool taskOpen = false;
     inline bool taskCompleteRequested = false;
     inline int activeTaskIndex = -1;
+    inline int activeTaskRoom = -1;
     inline std::string activeTaskName;
     inline int completionTaskIndex = -1;
+    inline int completionTaskRoom = -1;
     inline std::string completionTaskName;
     inline WashDishesState washDishes;
     inline TakeOutTrashState takeOutTrash;
+    inline std::vector<PendingTrashDropoff> pendingTrashDropoffs;
+    inline bool takeOutTrashDropoffPlacementRequested = false;
+    inline int takeOutTrashDropoffRequestedRoom = -1;
+    inline std::string takeOutTrashDropoffRequestedTaskName;
 
     inline bool IsWashDishesTask() {
         return activeTaskName == "wash dishes";
@@ -121,7 +136,7 @@ namespace Minigames {
         takeOutTrash.initialized = false;
         takeOutTrash.draggingItem = -1;
         takeOutTrash.dragOffset = vec2(0.0f);
-        takeOutTrash.phase = takeOutTrash.outsideDropoffPending ? TrashPhase::GoOutsidePrompt : TrashPhase::CollectFloorTrash;
+        takeOutTrash.phase = TrashPhase::CollectFloorTrash;
         takeOutTrash.items.clear();
     }
 
@@ -187,28 +202,40 @@ namespace Minigames {
         };
 
         if (takeOutTrash.binTexture == 0) {
-            takeOutTrash.binTexture = loadTrashTexture("bin_placeholder.png");
+            takeOutTrash.binTexture = loadTrashTexture("insideTrash.png");
             if (takeOutTrash.binTexture == 0) {
                 takeOutTrash.binTexture = loadTrashTexture("bin.png");
             }
         }
 
         if (takeOutTrash.outsideTrashcanTexture == 0) {
-            takeOutTrash.outsideTrashcanTexture = loadTrashTexture("outside_trashcan_placeholder.png");
+            takeOutTrash.outsideTrashcanTexture = loadTrashTexture("outdoorTrash.png");
             if (takeOutTrash.outsideTrashcanTexture == 0) {
                 takeOutTrash.outsideTrashcanTexture = loadTrashTexture("outside_trashcan.png");
             }
         }
 
         if (takeOutTrash.trashTextures.empty()) {
-            std::vector<std::string> names = {
-                "trash_item_placeholder_1.png",
-                "trash_item_placeholder_2.png",
-                "trash_item_placeholder_3.png"
-            };
+            for (int index = 1; index <= 40; ++index) {
+                GLuint tex = loadTrashTexture("trash" + std::to_string(index) + ".png");
+                if (tex != 0) {
+                    takeOutTrash.trashTextures.push_back(tex);
+                }
+            }
 
-            for (const std::string& name : names) {
-                takeOutTrash.trashTextures.push_back(loadTrashTexture(name));
+            if (takeOutTrash.trashTextures.empty()) {
+                std::vector<std::string> fallbackNames = {
+                    "trash_item_placeholder_1.png",
+                    "trash_item_placeholder_2.png",
+                    "trash_item_placeholder_3.png"
+                };
+
+                for (const std::string& name : fallbackNames) {
+                    GLuint tex = loadTrashTexture(name);
+                    if (tex != 0) {
+                        takeOutTrash.trashTextures.push_back(tex);
+                    }
+                }
             }
         }
     }
@@ -236,26 +263,74 @@ namespace Minigames {
         washDishes.initialized = true;
     }
 
-    inline void BuildTrashItems(vec2 areaCenter, vec2 areaHalf) {
+    inline void BuildTrashItems(vec2 areaCenter, vec2 areaHalf, vec2 binCenter, vec2 binHalf) {
         takeOutTrash.items.clear();
 
-        const int totalItems = 7;
-        const int cols = 3;
-        const float spacingX = 92.0f;
-        const float spacingY = 84.0f;
-        const float startX = areaCenter.x - spacingX;
-        const float startY = areaCenter.y + areaHalf.y - 92.0f;
+        std::vector<int> textureIndices;
+        textureIndices.reserve(takeOutTrash.trashTextures.size());
+        for (int index = 0; index < static_cast<int>(takeOutTrash.trashTextures.size()); ++index) {
+            textureIndices.push_back(index);
+        }
 
-        for (int i = 0; i < totalItems; ++i) {
-            int col = i % cols;
-            int row = i / cols;
+        for (int index = static_cast<int>(textureIndices.size()) - 1; index > 0; --index) {
+            int swapIndex = std::rand() % (index + 1);
+            std::swap(textureIndices[index], textureIndices[swapIndex]);
+        }
 
+        const int totalItems = takeOutTrash.activeTrashCount;
+        const float minX = areaCenter.x - areaHalf.x + 42.0f;
+        const float maxX = areaCenter.x + areaHalf.x - 42.0f;
+        const float minY = areaCenter.y - areaHalf.y + 38.0f;
+        const float maxY = areaCenter.y + areaHalf.y - 52.0f;
+
+        for (int itemIndex = 0; itemIndex < totalItems; ++itemIndex) {
             TrashItem item;
-            item.pos = vec2(startX + static_cast<float>(col) * spacingX, startY - static_cast<float>(row) * spacingY);
-            item.home = item.pos;
-            item.size = vec2(24.0f + static_cast<float>((i % 2) * 4));
+            item.size = vec2(24.0f + static_cast<float>((itemIndex % 2) * 4));
             item.inBin = false;
-            item.textureIndex = i % 3;
+
+            vec2 chosenPos = areaCenter;
+            bool foundSpot = false;
+            for (int attempt = 0; attempt < 80; ++attempt) {
+                float x = minX + static_cast<float>(std::rand() % 1000) / 1000.0f * std::max(1.0f, maxX - minX);
+                float y = minY + static_cast<float>(std::rand() % 1000) / 1000.0f * std::max(1.0f, maxY - minY);
+                vec2 candidate = vec2(x, y);
+
+                if (BoxCollide(candidate, item.size + vec2(34.0f), binCenter, binHalf + vec2(52.0f))) {
+                    continue;
+                }
+
+                bool overlapping = false;
+                for (const TrashItem& existing : takeOutTrash.items) {
+                    if (BoxCollide(candidate, item.size + vec2(16.0f), existing.home, existing.size + vec2(16.0f))) {
+                        overlapping = true;
+                        break;
+                    }
+                }
+
+                if (overlapping) {
+                    continue;
+                }
+
+                chosenPos = candidate;
+                foundSpot = true;
+                break;
+            }
+
+            if (!foundSpot) {
+                chosenPos = vec2(
+                    minX + static_cast<float>(std::rand() % 1000) / 1000.0f * std::max(1.0f, maxX - minX),
+                    minY + static_cast<float>(std::rand() % 1000) / 1000.0f * std::max(1.0f, maxY - minY)
+                );
+            }
+
+            item.pos = chosenPos;
+            item.home = chosenPos;
+
+            if (!textureIndices.empty()) {
+                item.textureIndex = textureIndices[itemIndex % static_cast<int>(textureIndices.size())];
+            } else {
+                item.textureIndex = -1;
+            }
 
             takeOutTrash.items.push_back(item);
         }
@@ -501,19 +576,16 @@ namespace Minigames {
     inline void DrawTakeOutTrashContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
         InitializeTakeOutTrashAssets();
 
-        vec2 floorCenter = vec2(-panelHalf.x * 0.34f, -16.0f);
-        vec2 floorHalf = vec2(panelHalf.x * 0.40f, panelHalf.y * 0.58f);
+        vec2 scatterCenter = vec2(0.0f, -10.0f);
+        vec2 scatterHalf = vec2(panelHalf.x * 0.84f, panelHalf.y * 0.62f);
         vec2 binCenter = vec2(0.0f, -20.0f);
         vec2 binHalf = vec2(72.0f, 88.0f);
 
         if (!takeOutTrash.initialized) {
-            BuildTrashItems(floorCenter, floorHalf);
+            BuildTrashItems(scatterCenter, scatterHalf, binCenter, binHalf);
         }
 
         if (takeOutTrash.phase == TrashPhase::CollectFloorTrash) {
-            Image::DrawRect(floorCenter, floorHalf, 0.86f, 0.84f, 0.80f, 1.0f, 0.0f);
-            Text::DrawStringCentered("floor trash", floorCenter + vec2(0.0f, floorHalf.y + 24.0f), 14.0f / zoom, 2.1f);
-
             if (takeOutTrash.binTexture != 0) {
                 Image::Draw(takeOutTrash.binTexture, binCenter, vec2(binHalf.x, binHalf.y), 0.0f);
             } else {
@@ -572,7 +644,6 @@ namespace Minigames {
         }
 
         if (takeOutTrash.phase == TrashPhase::GoOutsidePrompt) {
-            Image::DrawRect(vec2(0.0f, -22.0f), vec2(panelHalf.x * 0.72f, 95.0f), 0.78f, 0.86f, 0.95f, 1.0f, 0.0f);
             Text::DrawStringCentered("all trash collected", vec2(0.0f, 8.0f), 18.0f / zoom, 2.1f);
             Text::DrawStringCentered("go outside and press e at trashcan", vec2(0.0f, -30.0f), 14.0f / zoom, 2.0f);
 
@@ -583,9 +654,27 @@ namespace Minigames {
             Text::DrawStringCentered("go outside", continueCenter - vec2(0.0f, 6.0f), 15.0f / zoom, 2.1f);
 
             if (hoveringContinue && Mouse::IsPressed(0)) {
-                takeOutTrash.outsideDropoffPending = true;
+                bool alreadyPending = false;
+                for (const PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+                    if (dropoff.active && dropoff.taskRoom == activeTaskRoom && dropoff.taskName == activeTaskName) {
+                        alreadyPending = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyPending) {
+                    PendingTrashDropoff dropoff;
+                    dropoff.taskName = activeTaskName;
+                    dropoff.taskRoom = activeTaskRoom;
+                    pendingTrashDropoffs.push_back(dropoff);
+                }
+
+                takeOutTrashDropoffPlacementRequested = true;
+                takeOutTrashDropoffRequestedRoom = activeTaskRoom;
+                takeOutTrashDropoffRequestedTaskName = activeTaskName;
                 taskOpen = false;
                 activeTaskIndex = -1;
+                activeTaskRoom = -1;
                 activeTaskName.clear();
                 return;
             }
@@ -593,42 +682,104 @@ namespace Minigames {
     }
 
     inline void DrawTakeOutTrashWorldPrompt(int playerRoom, float zoom) {
-        if (!takeOutTrash.outsideDropoffPending || playerRoom != 0) {
+        if (playerRoom != 0) {
             return;
         }
 
-        if (takeOutTrash.outsideTrashcanTexture != 0) {
-            Image::Draw(takeOutTrash.outsideTrashcanTexture, takeOutTrash.outsideTrashcanPos, vec2(48.0f, 64.0f), 0.0f);
-        } else {
-            Image::DrawRect(takeOutTrash.outsideTrashcanPos, vec2(42.0f, 58.0f), 0.18f, 0.24f, 0.20f, 1.0f, 0.0f);
-        }
+        for (const PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+            if (!dropoff.active || !dropoff.hasWorldPos) {
+                continue;
+            }
 
-        Text::DrawStringCentered("press e", takeOutTrash.outsideTrashcanPos + vec2(0.0f, 78.0f), 13.0f / zoom, 2.0f);
+            if (takeOutTrash.outsideTrashcanTexture != 0) {
+                Image::Draw(takeOutTrash.outsideTrashcanTexture, dropoff.worldPos, vec2(48.0f, 64.0f), 0.0f);
+            } else {
+                Image::DrawRect(dropoff.worldPos, vec2(42.0f, 58.0f), 0.18f, 0.24f, 0.20f, 1.0f, 0.0f);
+            }
+
+            Text::DrawStringCentered("press e", dropoff.worldPos + vec2(0.0f, 78.0f), 13.0f / zoom, 2.0f);
+        }
     }
 
     inline void TryTakeOutTrashOutsideDropoff(vec2 playerPos, vec2 playerDim, int playerRoom, bool interactPressed) {
-        if (!takeOutTrash.outsideDropoffPending || playerRoom != 0) {
+        if (playerRoom != 0) {
+            for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+                if (dropoff.active) {
+                    dropoff.readyForInteract = false;
+                }
+            }
             return;
         }
 
-        if (!BoxCollide(playerPos, playerDim, takeOutTrash.outsideTrashcanPos, vec2(64.0f, 82.0f))) {
-            return;
+        for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+            if (!dropoff.active) {
+                continue;
+            }
+
+            if (!interactPressed) {
+                dropoff.readyForInteract = true;
+            }
         }
 
         if (!interactPressed) {
             return;
         }
 
-        takeOutTrash.outsideDropoffPending = false;
-        completionTaskIndex = -1;
-        completionTaskName = "take out trash";
-        taskCompleteRequested = true;
+        for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+            if (!dropoff.active || !dropoff.hasWorldPos) {
+                continue;
+            }
+
+            if (!dropoff.readyForInteract) {
+                continue;
+            }
+
+            if (!BoxCollide(playerPos, playerDim, dropoff.worldPos, vec2(64.0f, 82.0f))) {
+                continue;
+            }
+
+            dropoff.active = false;
+            completionTaskIndex = -1;
+            completionTaskRoom = dropoff.taskRoom;
+            completionTaskName = dropoff.taskName;
+            taskCompleteRequested = true;
+            break;
+        }
     }
 
-    inline void OpenTask(int taskIndex, const std::string& taskName) {
+    inline bool ConsumeTakeOutTrashDropoffPlacementRequest(int& taskRoom, std::string& taskName) {
+        if (!takeOutTrashDropoffPlacementRequested) {
+            return false;
+        }
+
+        taskRoom = takeOutTrashDropoffRequestedRoom;
+        taskName = takeOutTrashDropoffRequestedTaskName;
+        takeOutTrashDropoffPlacementRequested = false;
+        takeOutTrashDropoffRequestedRoom = -1;
+        takeOutTrashDropoffRequestedTaskName.clear();
+        return true;
+    }
+
+    inline void SetTakeOutTrashDropoffWorldPos(const std::string& taskName, int taskRoom, vec2 worldPos) {
+        for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+            if (!dropoff.active) {
+                continue;
+            }
+
+            if (dropoff.taskRoom == taskRoom && dropoff.taskName == taskName && !dropoff.hasWorldPos) {
+                dropoff.worldPos = worldPos;
+                dropoff.hasWorldPos = true;
+                dropoff.readyForInteract = false;
+                return;
+            }
+        }
+    }
+
+    inline void OpenTask(int taskIndex, const std::string& taskName, int taskRoom) {
         taskOpen = true;
         taskCompleteRequested = false;
         activeTaskIndex = taskIndex;
+        activeTaskRoom = taskRoom;
         activeTaskName = taskName;
 
         if (IsWashDishesTask()) {
@@ -644,6 +795,7 @@ namespace Minigames {
         taskOpen = false;
         taskCompleteRequested = false;
         activeTaskIndex = -1;
+        activeTaskRoom = -1;
 
         if (IsWashDishesTask()) {
             ResetWashDishesState();
@@ -671,6 +823,7 @@ namespace Minigames {
     inline void RequestTaskComplete() {
         if (taskOpen) {
             completionTaskIndex = activeTaskIndex;
+            completionTaskRoom = activeTaskRoom;
             completionTaskName = activeTaskName;
             taskCompleteRequested = true;
         }
@@ -687,6 +840,10 @@ namespace Minigames {
 
     inline int GetCompletionTaskIndex() {
         return completionTaskIndex;
+    }
+
+    inline int GetCompletionTaskRoom() {
+        return completionTaskRoom;
     }
 
     inline const std::string& GetCompletionTaskName() {

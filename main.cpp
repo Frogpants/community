@@ -1078,10 +1078,25 @@ int main()
             }
 
             if (!Minigames::IsTaskOpen() && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
-                Minigames::OpenTask(id, t.name);
+                Minigames::OpenTask(id, t.name, t.room);
             }
             ++id;
             Image::Draw(taskTex, t.pos, 45.0);
+        }
+
+        int pendingDropoffRoom = -1;
+        std::string pendingDropoffTaskName;
+        if (Minigames::ConsumeTakeOutTrashDropoffPlacementRequest(pendingDropoffRoom, pendingDropoffTaskName)) {
+            const vec2 trashCanForwardOffset = vec2(0.0f, -192.0f);
+            vec2 outsideTrashcanPos = vec2(220.0f, -250.0f);
+            for (const Door& door : doors) {
+                if (door.roomId == pendingDropoffRoom) {
+                    outsideTrashcanPos = door.hubPos + trashCanForwardOffset;
+                    break;
+                }
+            }
+
+            Minigames::SetTakeOutTrashDropoffWorldPos(pendingDropoffTaskName, pendingDropoffRoom, outsideTrashcanPos);
         }
 
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
@@ -1185,9 +1200,11 @@ int main()
 
         if (Minigames::ConsumeTaskCompleteRequest()) {
             int activeTaskIndex = Minigames::GetCompletionTaskIndex();
+            int completionTaskRoom = Minigames::GetCompletionTaskRoom();
             if ((activeTaskIndex < 0 || activeTaskIndex >= static_cast<int>(objectives.size())) && !Minigames::GetCompletionTaskName().empty()) {
                 for (int objectiveIndex = 0; objectiveIndex < static_cast<int>(objectives.size()); ++objectiveIndex) {
-                    if (objectives[objectiveIndex].name == Minigames::GetCompletionTaskName()) {
+                    if (objectives[objectiveIndex].name == Minigames::GetCompletionTaskName() &&
+                        (completionTaskRoom < 0 || objectives[objectiveIndex].room == completionTaskRoom)) {
                         activeTaskIndex = objectiveIndex;
                         break;
                     }
