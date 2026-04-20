@@ -93,6 +93,14 @@ namespace Minigames {
         bool readyForInteract = false;
     };
 
+    struct LaundryState {
+        bool initialized = false;
+        GLuint outsideMachineTexture = 0;
+        float washProgress = 0.0f;
+        bool started = false;
+        bool completionSent = false;
+    };
+
     inline bool taskOpen = false;
     inline bool taskCompleteRequested = false;
     inline int activeTaskIndex = -1;
@@ -103,6 +111,7 @@ namespace Minigames {
     inline std::string completionTaskName;
     inline WashDishesState washDishes;
     inline TakeOutTrashState takeOutTrash;
+    inline LaundryState laundry;
     inline std::vector<PendingTrashDropoff> pendingTrashDropoffs;
     inline bool takeOutTrashDropoffPlacementRequested = false;
     inline int takeOutTrashDropoffRequestedRoom = -1;
@@ -114,6 +123,10 @@ namespace Minigames {
 
     inline bool IsTakeOutTrashTask() {
         return activeTaskName == "take out trash";
+    }
+
+    inline bool IsLaundryTask() {
+        return activeTaskName == "do laundry";
     }
 
     inline void ResetWashDishesState() {
@@ -138,6 +151,13 @@ namespace Minigames {
         takeOutTrash.dragOffset = vec2(0.0f);
         takeOutTrash.phase = TrashPhase::CollectFloorTrash;
         takeOutTrash.items.clear();
+    }
+
+    inline void ResetLaundryState() {
+        laundry.initialized = false;
+        laundry.washProgress = 0.0f;
+        laundry.started = false;
+        laundry.completionSent = false;
     }
 
     inline void InitializeWashDishesAssets() {
@@ -238,6 +258,32 @@ namespace Minigames {
                 }
             }
         }
+    }
+
+    inline void InitializeLaundryAssets() {
+        auto loadLaundryTexture = [](const std::string& relativePath) {
+            std::vector<std::string> candidates = {
+                "dist/assets/minigames/laundry/" + relativePath,
+                "assets/minigames/laundry/" + relativePath,
+                "dist/assets/mini games/laundry/" + relativePath,
+                "assets/mini games/laundry/" + relativePath
+            };
+
+            for (const std::string& path : candidates) {
+                GLuint tex = Image::Load(path.c_str());
+                if (tex != 0) {
+                    return tex;
+                }
+            }
+
+            return 0u;
+        };
+
+        if (laundry.outsideMachineTexture == 0) {
+            laundry.outsideMachineTexture = loadLaundryTexture("outsideMachine.png");
+        }
+
+        laundry.initialized = true;
     }
 
     inline void BuildPlateSlots(vec2 tableCenter, vec2 tableHalf) {
@@ -675,6 +721,69 @@ namespace Minigames {
         }
     }
 
+    inline void DrawLaundryContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
+        if (!laundry.initialized) {
+            InitializeLaundryAssets();
+        }
+
+        vec2 machineCenter = vec2(0.0f, -12.0f);
+        vec2 machineHalf = vec2(panelHalf.x * 0.34f, panelHalf.y * 0.48f);
+
+        if (laundry.outsideMachineTexture != 0) {
+            Image::Draw(laundry.outsideMachineTexture, machineCenter, machineHalf, 0.0f);
+        } else {
+            Image::DrawRect(machineCenter, machineHalf, 0.74f, 0.76f, 0.80f, 1.0f, 0.0f);
+            Image::DrawRect(machineCenter + vec2(0.0f, 40.0f), vec2(machineHalf.x * 0.60f, machineHalf.y * 0.38f), 0.50f, 0.53f, 0.58f, 1.0f, 0.0f);
+        }
+
+        bool holdingToWash = Mouse::IsDown(0) && BoxCollide(mouseUI, vec2(0.0f), machineCenter, machineHalf);
+        const float fillRate = 0.0105f;
+        const float drainRate = 0.0022f;
+
+        if (holdingToWash) {
+            laundry.started = true;
+            laundry.washProgress += fillRate;
+        } else if (laundry.started && laundry.washProgress > 0.0f) {
+            laundry.washProgress -= drainRate;
+        }
+
+        laundry.washProgress = std::clamp(laundry.washProgress, 0.0f, 1.0f);
+        if (laundry.washProgress <= 0.0f) {
+            laundry.washProgress = 0.0f;
+        }
+
+        vec2 barCenter = vec2(0.0f, -panelHalf.y + 102.0f);
+        vec2 barHalf = vec2(panelHalf.x * 0.44f, 16.0f);
+        Image::DrawRect(barCenter, barHalf, 0.22f, 0.24f, 0.28f, 1.0f, 0.0f);
+
+        float fillRatio = laundry.washProgress;
+        if (fillRatio > 0.0f) {
+            float leftX = barCenter.x - barHalf.x;
+            float fillWidth = barHalf.x * 2.0f * fillRatio;
+            vec2 fillHalf = vec2(fillWidth * 0.5f, barHalf.y - 3.0f);
+            vec2 fillCenter = vec2(leftX + fillHalf.x, barCenter.y);
+            Image::DrawRect(fillCenter, fillHalf, 0.24f, 0.66f, 0.30f, 1.0f, 0.0f);
+        }
+
+        int percent = static_cast<int>(laundry.washProgress * 100.0f + 0.5f);
+        Text::DrawStringCentered("hold click on washer to start", vec2(0.0f, -panelHalf.y + 56.0f), 14.0f / zoom, 2.1f);
+        Text::DrawStringCentered("wash progress " + std::to_string(percent) + "%", vec2(0.0f, -panelHalf.y + 134.0f), 13.0f / zoom, 2.0f);
+
+        if (laundry.started && laundry.washProgress >= 1.0f) {
+            Image::DrawRect(vec2(0.0f, -20.0f), vec2(panelHalf.x * 0.70f, 90.0f), 0.76f, 0.90f, 0.78f, 1.0f, 0.0f);
+            Text::DrawStringCentered("laundry is done", vec2(0.0f, 0.0f), 20.0f / zoom, 2.2f);
+            Text::DrawStringCentered("task complete", vec2(0.0f, -36.0f), 16.0f / zoom, 2.1f);
+
+            if (!laundry.completionSent) {
+                completionTaskIndex = activeTaskIndex;
+                completionTaskRoom = activeTaskRoom;
+                completionTaskName = activeTaskName;
+                taskCompleteRequested = true;
+                laundry.completionSent = true;
+            }
+        }
+    }
+
     inline void DrawTakeOutTrashWorldPrompt(int playerRoom, float zoom) {
         if (playerRoom != 0) {
             return;
@@ -783,6 +892,10 @@ namespace Minigames {
         if (IsTakeOutTrashTask()) {
             ResetTakeOutTrashState();
         }
+
+        if (IsLaundryTask()) {
+            ResetLaundryState();
+        }
     }
 
     inline void CloseTask() {
@@ -797,6 +910,10 @@ namespace Minigames {
 
         if (IsTakeOutTrashTask()) {
             ResetTakeOutTrashState();
+        }
+
+        if (IsLaundryTask()) {
+            ResetLaundryState();
         }
 
         activeTaskName.clear();
@@ -875,6 +992,8 @@ namespace Minigames {
             DrawWashDishesContent(panelHalf, zoom, mouseUI);
         } else if (IsTakeOutTrashTask()) {
             DrawTakeOutTrashContent(panelHalf, zoom, mouseUI);
+        } else if (IsLaundryTask()) {
+            DrawLaundryContent(panelHalf, zoom, mouseUI);
         } else {
             DrawGenericTaskContent(zoom);
         }
