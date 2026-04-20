@@ -52,7 +52,7 @@ namespace Minigames {
         int bubbleSpawned = 0;
         int bubblePopped = 0;
         int bubbleMissed = 0;
-        int bubbleTarget = 14;
+        int bubbleTarget = 10;
 
         bool completionSent = false;
     };
@@ -502,6 +502,9 @@ namespace Minigames {
                 if (hitIndex != -1) {
                     washDishes.bubbles.erase(washDishes.bubbles.begin() + hitIndex);
                     washDishes.bubblePopped += 1;
+                    if (washDishes.bubblePopped >= washDishes.bubbleTarget) {
+                        washDishes.phase = WashPhase::Won;
+                    }
                 }
             }
 
@@ -526,22 +529,13 @@ namespace Minigames {
                 DrawBubble(bubble);
             }
 
-            vec2 finishCenter = vec2(0.0f, -panelHalf.y + 148.0f);
-            vec2 finishHalf = vec2(120.0f, 24.0f);
-            bool hoveringFinish = BoxCollide(mouseUI, vec2(0.0f), finishCenter, finishHalf);
-            Image::DrawRect(finishCenter, finishHalf, hoveringFinish ? 0.22f : 0.30f, hoveringFinish ? 0.70f : 0.62f, 0.28f, 1.0f, 0.0f);
-            Text::DrawStringCentered("finish wash", finishCenter - vec2(0.0f, 6.0f), 15.0f / zoom, 2.1f);
-            if (hoveringFinish && Mouse::IsPressed(0)) {
-                washDishes.phase = WashPhase::Won;
-            }
-
-            if (washDishes.bubbleMissed >= 3) {
+            if (washDishes.phase == WashPhase::PopBubbles && washDishes.bubbleMissed >= 3) {
                 washDishes.phase = WashPhase::Lost;
             }
 
-            std::string progressText = "popped " + std::to_string(washDishes.bubblePopped);
+            std::string progressText = "popped " + std::to_string(washDishes.bubblePopped) + " / " + std::to_string(washDishes.bubbleTarget);
             std::string missText = "missed " + std::to_string(washDishes.bubbleMissed) + " of 3";
-            Text::DrawStringCentered("click bubbles before they disappear", vec2(0.0f, -panelHalf.y + 48.0f), 14.0f / zoom, 2.1f);
+            Text::DrawStringCentered("pop 10 bubbles before they disappear", vec2(0.0f, -panelHalf.y + 48.0f), 14.0f / zoom, 2.1f);
             Text::DrawStringCentered(progressText, vec2(0.0f, -panelHalf.y + 82.0f), 13.0f / zoom, 2.0f);
             Text::DrawStringCentered(missText, vec2(0.0f, -panelHalf.y + 112.0f), 13.0f / zoom, 2.0f);
         } else if (washDishes.phase == WashPhase::Won) {
