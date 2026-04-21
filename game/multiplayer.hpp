@@ -4,7 +4,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <cmath>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -24,23 +23,12 @@ struct RemotePlayer {
     vec2 pos = vec2(0.0f);
     vec2 renderPos = vec2(0.0f);
     bool hasRenderPos = false;
-    int room = -1;
-    int level = -1;
     struct PositionSample {
         vec2 pos = vec2(0.0f);
         double timestamp = 0.0;
     };
     std::deque<PositionSample> positionBuffer;
     double lastSeenTime = 0.0;
-    std::string taskProgress;
-};
-
-struct PlayerJsonPackage {
-    std::string playerName;
-    vec2 pos = vec2(0.0f);
-    int room = -1;
-    int level = -1;
-    std::string taskProgress;
 };
 
 class MultiplayerClient {
@@ -65,22 +53,6 @@ public:
         playerName = sanitizeName(value);
     }
 
-    void setTaskProgress(const std::string& value) {
-        std::lock_guard<std::mutex> lock(stateMutex);
-        latestTaskProgress = value;
-    }
-
-    std::vector<std::string> getRemoteTaskProgressStates() const {
-        std::vector<std::string> states;
-        std::lock_guard<std::mutex> lock(stateMutex);
-        for (const auto& entry : remotes) {
-            if (!entry.second.taskProgress.empty()) {
-                states.push_back(entry.second.taskProgress);
-            }
-        }
-        return states;
-    }
-
     bool initOrJoin(const std::string& roomCodeOverride) {
         stopWorker();
 
@@ -103,12 +75,10 @@ public:
         leaveRoom();
     }
 
-    void sync(const vec2& localPos, int localRoom, int localLevel) {
+    void sync(const vec2& localPos) {
         double nowSeconds = getCurrentTimeSeconds();
         std::lock_guard<std::mutex> lock(stateMutex);
         latestLocalPos = localPos;
-        latestLocalRoom = localRoom;
-        latestLocalLevel = localLevel;
 
         const double staleTimeout = 5.0;
         const double interpolationDelay = 0.10;
@@ -176,12 +146,6 @@ public:
         std::lock_guard<std::mutex> lock(stateMutex);
         for (const auto& entry : remotes) {
             const RemotePlayer& remote = entry.second;
-            bool sameRoom = remote.room >= 0 && remote.room == latestLocalRoom;
-            bool sameLevel = remote.level >= 0 && remote.level == latestLocalRoom;
-            if (!sameRoom && !sameLevel) {
-                continue;
-            }
-
             vec2 drawPos = remote.hasRenderPos ? remote.renderPos : remote.pos;
             Image::Draw(sharedTexture, drawPos, 150.0f);
             Text::DrawStringCentered(remote.playerName, vec2(drawPos.x, drawPos.y + 190.0f), 14.0f, 1.3f);
@@ -211,9 +175,6 @@ private:
 
     bool connected = false;
     vec2 latestLocalPos = vec2(0.0f);
-    int latestLocalRoom = 0;
-    int latestLocalLevel = -1;
-    std::string latestTaskProgress;
 
     std::map<std::string, RemotePlayer> remotes;
 
@@ -352,104 +313,6 @@ private:
         return escaped;
     }
 
-    static std::string buildPlayerJsonPackage(const PlayerJsonPackage& playerPackage) {
-        std::ostringstream body;
-        PlayerJsonPackage normalizedPackage = playerPackage;
-        normalizedPackage.level = normalizedPackage.room;
-
-        body << "{\"playerName\":\"" << escapeJson(playerPackage.playerName)
-             << "\",\"room\":" << normalizedPackage.room
-             << ",\"currentRoom\":" << normalizedPackage.room
-             << ",\"level\":" << normalizedPackage.level
-             << ",\"currentLevel\":" << normalizedPackage.level
-             << ",\"x\":" << normalizedPackage.pos.x
-             << ",\"y\":" << normalizedPackage.pos.y;
-
-        if (!normalizedPackage.taskProgress.empty()) {
-            body << ",\"taskProgress\":\"" << escapeJson(normalizedPackage.taskProgress) << "\"";
-        }
-
-        body << ",\"player\":{\"playerName\":\"" << escapeJson(normalizedPackage.playerName)
-             << "\",\"room\":" << normalizedPackage.room
-             << ",\"currentRoom\":" << normalizedPackage.room
-             << ",\"level\":" << normalizedPackage.level
-             << ",\"currentLevel\":" << normalizedPackage.level
-             << ",\"position\":{\"x\":" << normalizedPackage.pos.x
-             << ",\"y\":" << normalizedPackage.pos.y << "}";
-
-        if (!normalizedPackage.taskProgress.empty()) {
-            body << ",\"taskProgress\":\"" << escapeJson(normalizedPackage.taskProgress) << "\"";
-        }
-
-        body << "}}";
-        return body.str();
-    }
-
-    static bool tryExtractPlayerJsonPackage(const std::string& objectJson, PlayerJsonPackage& outPackage) {
-        std::string playerJson = extractJsonObject(objectJson, "player");
-        if (playerJson.empty()) {
-            playerJson = objectJson;
-        }
-
-        std::string name = extractJsonString(objectJson, "playerName");
-        if (name.empty()) {
-            name = extractJsonString(playerJson, "playerName");
-        }
-
-        std::string taskProgress = extractJsonString(objectJson, "taskProgress");
-        if (taskProgress.empty()) {
-            taskProgress = extractJsonString(playerJson, "taskProgress");
-        }
-
-        std::string positionJson = extractJsonObject(playerJson, "position");
-
-        double x = 0.0;
-        double y = 0.0;
-        bool hasPosition = false;
-        if (!positionJson.empty()) {
-            hasPosition = extractJsonNumber(positionJson, "x", x) && extractJsonNumber(positionJson, "y", y);
-        }
-        if (!hasPosition) {
-            hasPosition = extractJsonNumber(playerJson, "x", x) && extractJsonNumber(playerJson, "y", y);
-        }
-        if (!hasPosition) {
-            hasPosition = extractJsonNumber(objectJson, "x", x) && extractJsonNumber(objectJson, "y", y);
-        }
-
-        int room = -1;
-        double roomValue = 0.0;
-        if (extractJsonNumber(playerJson, "room", roomValue) ||
-            extractJsonNumber(objectJson, "room", roomValue) ||
-            extractJsonNumber(playerJson, "currentRoom", roomValue) ||
-            extractJsonNumber(objectJson, "currentRoom", roomValue)) {
-            room = static_cast<int>(roomValue);
-        }
-
-        int level = -1;
-        double levelValue = 0.0;
-        if (extractJsonNumber(playerJson, "level", levelValue) ||
-            extractJsonNumber(objectJson, "level", levelValue) ||
-            extractJsonNumber(playerJson, "currentLevel", levelValue) ||
-            extractJsonNumber(objectJson, "currentLevel", levelValue)) {
-            level = static_cast<int>(levelValue);
-        }
-
-        if (room >= 0) {
-            level = room;
-        }
-
-        if (name.empty() || !hasPosition) {
-            return false;
-        }
-
-        outPackage.playerName = name;
-        outPackage.pos = vec2(static_cast<float>(x), static_cast<float>(y));
-        outPackage.room = room;
-        outPackage.level = level;
-        outPackage.taskProgress = taskProgress;
-        return true;
-    }
-
     static std::string extractJsonString(const std::string& json, const std::string& key, std::size_t from = 0) {
         std::string token = "\"" + key + "\"";
         std::size_t keyPos = json.find(token, from);
@@ -480,46 +343,6 @@ private:
         }
 
         return json.substr(firstQuote + 1, endQuote - firstQuote - 1);
-    }
-
-    static std::string extractJsonObject(const std::string& json, const std::string& key, std::size_t from = 0) {
-        std::string token = "\"" + key + "\"";
-        std::size_t keyPos = json.find(token, from);
-        if (keyPos == std::string::npos) {
-            return "";
-        }
-
-        std::size_t colonPos = json.find(':', keyPos + token.size());
-        if (colonPos == std::string::npos) {
-            return "";
-        }
-
-        std::size_t objectStart = json.find('{', colonPos + 1);
-        if (objectStart == std::string::npos) {
-            return "";
-        }
-
-        int depth = 0;
-        std::size_t objectEnd = objectStart;
-        while (objectEnd < json.size()) {
-            char c = json[objectEnd];
-            if (c == '{') {
-                ++depth;
-            } else if (c == '}') {
-                --depth;
-                if (depth == 0) {
-                    ++objectEnd;
-                    break;
-                }
-            }
-            ++objectEnd;
-        }
-
-        if (depth != 0) {
-            return "";
-        }
-
-        return json.substr(objectStart, objectEnd - objectStart);
     }
 
     static std::string extractFirstRoomCode(const std::string& json) {
@@ -627,25 +450,19 @@ private:
 
     void postPresence(const vec2& localPos, const std::string& localRoomCode) {
         std::string localName;
-        int localRoom = 0;
-        std::string localTaskProgress;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
             localName = playerName;
-            localRoom = latestLocalRoom;
-            localTaskProgress = latestTaskProgress;
         }
 
-        PlayerJsonPackage playerPackage;
-        playerPackage.playerName = localName;
-        playerPackage.pos = localPos;
-        playerPackage.room = localRoom;
-        playerPackage.level = latestLocalLevel;
-        playerPackage.taskProgress = localTaskProgress;
+        std::ostringstream body;
+        body << "{\"playerName\":\"" << escapeJson(localName)
+             << "\",\"x\":" << localPos.x
+             << ",\"y\":" << localPos.y << "}";
 
         Http::Response response = tryPostJson(
             "/api/multiplayer/rooms/" + localRoomCode + "/presence",
-            buildPlayerJsonPackage(playerPackage)
+            body.str()
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -711,24 +528,17 @@ private:
 
             std::string objectJson = playersArray.substr(objStart, objEnd - objStart);
             std::string id = extractJsonString(objectJson, "playerId");
-            if (id.empty()) {
-                std::string playerJson = extractJsonObject(objectJson, "player");
-                if (!playerJson.empty()) {
-                    id = extractJsonString(playerJson, "playerId");
-                }
-            }
+            std::string name = extractJsonString(objectJson, "playerName");
 
-            PlayerJsonPackage remotePackage;
-            if (!id.empty() && tryExtractPlayerJsonPackage(objectJson, remotePackage)) {
-                if (remotePackage.playerName != localName) {
+            double x = 0.0;
+            double y = 0.0;
+            if (!id.empty() && !name.empty() && extractJsonNumber(objectJson, "x", x) && extractJsonNumber(objectJson, "y", y)) {
+                if (name != localName) {
                     std::lock_guard<std::mutex> lock(stateMutex);
                     RemotePlayer& remote = remotes[id];
                     remote.playerId = id;
-                    remote.playerName = remotePackage.playerName;
-                    remote.pos = remotePackage.pos;
-                    remote.room = remotePackage.room;
-                    remote.level = remotePackage.level;
-                    remote.taskProgress = remotePackage.taskProgress;
+                    remote.playerName = name;
+                    remote.pos = vec2(static_cast<float>(x), static_cast<float>(y));
 
                     if (!remote.positionBuffer.empty()) {
                         const RemotePlayer::PositionSample& lastSample = remote.positionBuffer.back();

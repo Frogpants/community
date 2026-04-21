@@ -21,8 +21,6 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
-#include <sstream>
-#include <algorithm>
 
 #include "game/player.hpp"
 #include "game/character.hpp"
@@ -32,11 +30,9 @@ class MultiplayerClient {
 public:
     void setServer(const std::string&, int) {}
     void setPlayerName(const std::string&) {}
-    void setTaskProgress(const std::string&) {}
-    std::vector<std::string> getRemoteTaskProgressStates() const { return {}; }
     bool initOrJoin(const std::string&) { return false; }
     void shutdown() {}
-    void sync(const vec2&, int, int) {}
+    void sync(const vec2&) {}
     void drawRemotePlayers(GLuint) {}
     std::string getStatusText() const { return "multiplayer unavailable on web build"; }
 };
@@ -458,7 +454,7 @@ void windowResizeCallback(GLFWwindow* window, int width, int height) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-bool addTaskForCharacter(Character& character) {
+bool addTaskForCharacter(Character& character, Player& localPlayer) {
     if (character.tasksGiven >= static_cast<int>(character.tasks.size())) {
         return false;
     }
@@ -469,141 +465,11 @@ bool addTaskForCharacter(Character& character) {
     task.name = character.tasks[taskId];
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
-
-    for (const Task& existing : objectives) {
-        if (existing.room == task.room && existing.id == task.id) {
-            return false;
-        }
-    }
-
     objectives.push_back(task);
+
+    localPlayer.tasks.push_back(character.tasks[taskId]);
     character.tasksGiven += 1;
     return true;
-}
-
-void EnsureObjectiveExists(const Character& character, int taskId) {
-    if (taskId < 0 || taskId >= static_cast<int>(character.tasks.size())) {
-        return;
-    }
-
-    for (const Task& existing : objectives) {
-        if (existing.room == character.room && existing.id == taskId) {
-            return;
-        }
-    }
-
-    Task task;
-    task.id = taskId;
-    task.name = character.tasks[taskId];
-    task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
-    task.room = character.room;
-    objectives.push_back(task);
-}
-
-std::string SerializeTaskProgress(const std::vector<Character>& chars) {
-    std::ostringstream out;
-    bool first = true;
-    for (const Character& c : chars) {
-        if (!first) {
-            out << ",";
-        }
-        out << c.room << ":" << c.tasksGiven << ":" << c.tasksCompleted;
-        first = false;
-    }
-    return out.str();
-}
-
-void RemoveCompletedObjectivesForRoom(int room, int completedCount) {
-    objectives.erase(
-        std::remove_if(
-            objectives.begin(),
-            objectives.end(),
-            [room, completedCount](const Task& task) {
-                return task.room == room && task.id < completedCount;
-            }
-        ),
-        objectives.end()
-    );
-}
-
-void ApplyRemoteTaskProgressState(const std::string& serializedState,
-                                  std::vector<Character>& chars,
-                                  const std::vector<Tile>& tiles,
-                                  std::vector<TreeProp>& trees,
-                                  std::vector<Door>& doors,
-                                  int& nextRoomId,
-                                  const std::vector<vec2>& hubDoorPositions) {
-    if (serializedState.empty()) {
-        return;
-    }
-
-    std::stringstream stream(serializedState);
-    std::string token;
-    while (std::getline(stream, token, ',')) {
-        std::size_t separator = token.find(':');
-        if (separator == std::string::npos || separator == 0 || separator + 1 >= token.size()) {
-            continue;
-        }
-
-        std::size_t secondSeparator = token.find(':', separator + 1);
-
-        int roomId = 0;
-        int givenCount = 0;
-        int completedCount = 0;
-        try {
-            roomId = std::stoi(token.substr(0, separator));
-            if (secondSeparator != std::string::npos) {
-                givenCount = std::stoi(token.substr(separator + 1, secondSeparator - separator - 1));
-                completedCount = std::stoi(token.substr(secondSeparator + 1));
-            } else {
-                completedCount = std::stoi(token.substr(separator + 1));
-                givenCount = completedCount;
-            }
-        } catch (...) {
-            continue;
-        }
-
-        Character* character = getCharacterForRoom(chars, roomId);
-        if (character == nullptr) {
-            continue;
-        }
-
-        int maxTasks = static_cast<int>(character->tasks.size());
-        givenCount = std::max(0, std::min(givenCount, maxTasks));
-        completedCount = std::max(0, std::min(completedCount, maxTasks));
-        if (completedCount > givenCount) {
-            givenCount = completedCount;
-        }
-
-        bool changed = false;
-        if (givenCount > character->tasksGiven) {
-            character->tasksGiven = givenCount;
-            changed = true;
-        }
-
-        if (completedCount > character->tasksCompleted) {
-            character->tasksCompleted = completedCount;
-            changed = true;
-        }
-
-        if (!changed) {
-            continue;
-        }
-
-        character->tasksGiven = std::max(character->tasksGiven, character->tasksCompleted);
-        character->level = character->tasksCompleted * 30;
-
-        RemoveCompletedObjectivesForRoom(character->room, character->tasksCompleted);
-        for (int taskId = character->tasksCompleted; taskId < character->tasksGiven; ++taskId) {
-            EnsureObjectiveExists(*character, taskId);
-        }
-
-        if (character->tasksCompleted >= maxTasks && !character->isRoaming) {
-            character->isRoaming = true;
-            spawnTreeOnMarkerForRoom(tiles, trees, character->room);
-            spawnNextStage(chars, doors, nextRoomId, *character, hubDoorPositions);
-        }
-    }
 }
 
 
@@ -1126,8 +992,6 @@ int main()
                 camera.target = player.pos;
                 camera.follow();
 
-                Character* currentCharacter = getCharacterForRoom(characters, player.room);
-
                 if (!Minigames::IsTaskOpen()) {
                     player.controls();
                     vec2 oldPlayerPos = player.pos;
@@ -1138,22 +1002,18 @@ int main()
                     if (player.pos.y == oldPlayerPos.y) {
                         player.vel.y = 0.0f;
                     }
-                    multiplayer.sync(player.pos, player.room, player.room);
+                    multiplayer.sync(player.pos);
                 }
 
-                multiplayer.setTaskProgress(SerializeTaskProgress(characters));
-                std::vector<std::string> remoteTaskStates = multiplayer.getRemoteTaskProgressStates();
-                for (const std::string& remoteTaskState : remoteTaskStates) {
-                    ApplyRemoteTaskProgressState(remoteTaskState, characters, tiles, spawnedTrees, doors, nextRoomId, hubDoorPositions);
-                }
+                Character* currentCharacter = getCharacterForRoom(characters, player.room);
 
                 if (!Minigames::IsTaskOpen() && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
                     if (currentCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
-                    } else if (addTaskForCharacter(*currentCharacter)) {
-                        std::cout << "Global objective added: " << objectives.back().name << std::endl;
+                    } else if (addTaskForCharacter(*currentCharacter, player)) {
+                        std::cout << "Task added: " << player.tasks.back() << std::endl;
                     } else {
-                        std::cout << "No new global objectives available right now." << std::endl;
+                        std::cout << "All tasks completed. No more tasks available." << std::endl;
                     }
                 }
 
@@ -1270,7 +1130,7 @@ int main()
         std::string levelText = "level " + std::to_string(uiLevel);
         Text::DrawString(levelText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
-        std::string taskText = "objectives " + std::to_string(objectives.size());
+        std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
 
         std::string roomText = "room " + std::to_string(player.room);
@@ -1327,8 +1187,8 @@ int main()
         Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 180) / zoom, 20.0f / zoom, 1.5f);
 
         float y = 112.0;
-        for (const Task& objective : objectives) {
-            taskText = "- r" + std::to_string(objective.room) + ": " + objective.name;
+        for (const std::string& t : player.tasks) {
+            taskText = "- " + t;
             Text::DrawString(taskText, vec2(screen.x - 600, screen.y - y) / zoom, 24.0f / zoom, 1.5f);
             y += 64.0;
         }
@@ -1356,10 +1216,15 @@ int main()
                 Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
 
                 objectives.erase(objectives.begin() + activeTaskIndex);
+                if (!completedTask.name.empty()) {
+                    auto taskIt = std::find(player.tasks.begin(), player.tasks.end(), completedTask.name);
+                    if (taskIt != player.tasks.end()) {
+                        player.tasks.erase(taskIt);
+                    }
+                }
 
                 if (completedCharacter != nullptr) {
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
-                    completedCharacter->tasksGiven = std::max(completedCharacter->tasksGiven, completedCharacter->tasksCompleted);
                     completedCharacter->level = completedCharacter->tasksCompleted * 30;
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         completedCharacter->isRoaming = true;
