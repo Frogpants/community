@@ -23,6 +23,7 @@ struct RemotePlayer {
     vec2 pos = vec2(0.0f);
     vec2 renderPos = vec2(0.0f);
     bool hasRenderPos = false;
+    int room = 0;
     struct PositionSample {
         vec2 pos = vec2(0.0f);
         double timestamp = 0.0;
@@ -75,10 +76,11 @@ public:
         leaveRoom();
     }
 
-    void sync(const vec2& localPos) {
+    void sync(const vec2& localPos, int localRoom) {
         double nowSeconds = getCurrentTimeSeconds();
         std::lock_guard<std::mutex> lock(stateMutex);
         latestLocalPos = localPos;
+        latestLocalRoom = localRoom;
 
         const double staleTimeout = 5.0;
         const double interpolationDelay = 0.10;
@@ -142,10 +144,13 @@ public:
         }
     }
 
-    void drawRemotePlayers(GLuint sharedTexture) {
+    void drawRemotePlayers(GLuint sharedTexture, int localRoom) {
         std::lock_guard<std::mutex> lock(stateMutex);
         for (const auto& entry : remotes) {
             const RemotePlayer& remote = entry.second;
+            if (remote.room != localRoom) {
+                continue;
+            }
             vec2 drawPos = remote.hasRenderPos ? remote.renderPos : remote.pos;
             Image::Draw(sharedTexture, drawPos, 150.0f);
             Text::DrawStringCentered(remote.playerName, vec2(drawPos.x, drawPos.y + 190.0f), 14.0f, 1.3f);
@@ -175,6 +180,7 @@ private:
 
     bool connected = false;
     vec2 latestLocalPos = vec2(0.0f);
+    int latestLocalRoom = 0;
 
     std::map<std::string, RemotePlayer> remotes;
 
@@ -448,7 +454,7 @@ private:
         return true;
     }
 
-    void postPresence(const vec2& localPos, const std::string& localRoomCode) {
+    void postPresence(const vec2& localPos, int localRoom, const std::string& localRoomCode) {
         std::string localName;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
@@ -458,7 +464,8 @@ private:
         std::ostringstream body;
         body << "{\"playerName\":\"" << escapeJson(localName)
              << "\",\"x\":" << localPos.x
-             << ",\"y\":" << localPos.y << "}";
+               << ",\"y\":" << localPos.y
+               << ",\"room\":" << localRoom << "}";
 
         Http::Response response = tryPostJson(
             "/api/multiplayer/rooms/" + localRoomCode + "/presence",
@@ -532,6 +539,8 @@ private:
 
             double x = 0.0;
             double y = 0.0;
+            double gameplayRoom = 0.0;
+            bool hasGameplayRoom = extractJsonNumber(objectJson, "room", gameplayRoom);
             if (!id.empty() && !name.empty() && extractJsonNumber(objectJson, "x", x) && extractJsonNumber(objectJson, "y", y)) {
                 if (name != localName) {
                     std::lock_guard<std::mutex> lock(stateMutex);
@@ -539,6 +548,9 @@ private:
                     remote.playerId = id;
                     remote.playerName = name;
                     remote.pos = vec2(static_cast<float>(x), static_cast<float>(y));
+                    if (hasGameplayRoom) {
+                        remote.room = static_cast<int>(gameplayRoom);
+                    }
 
                     if (!remote.positionBuffer.empty()) {
                         const RemotePlayer::PositionSample& lastSample = remote.positionBuffer.back();
@@ -581,12 +593,14 @@ private:
             bool localConnected = false;
             std::string localRoomCode;
             vec2 localPos;
+            int localRoom = 0;
 
             {
                 std::lock_guard<std::mutex> lock(stateMutex);
                 localConnected = connected;
                 localRoomCode = roomCode;
                 localPos = latestLocalPos;
+                localRoom = latestLocalRoom;
             }
 
             if (!localConnected) {
@@ -598,7 +612,7 @@ private:
             const double nowSeconds = getCurrentTimeSeconds();
 
             if (nowSeconds - lastPushTime >= 0.05) {
-                postPresence(localPos, localRoomCode);
+                postPresence(localPos, localRoom, localRoomCode);
                 lastPushTime = nowSeconds;
             }
 

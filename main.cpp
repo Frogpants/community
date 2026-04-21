@@ -42,8 +42,8 @@ public:
     void setPlayerName(const std::string&) {}
     bool initOrJoin(const std::string&) { return false; }
     void shutdown() {}
-    void sync(const vec2&) {}
-    void drawRemotePlayers(GLuint) {}
+    void sync(const vec2&, int) {}
+    void drawRemotePlayers(GLuint, int) {}
     std::string getStatusText() const { return "multiplayer unavailable on web build"; }
 };
 #else
@@ -1569,7 +1569,7 @@ int main()
                     if (player.pos.y == oldPlayerPos.y) {
                         player.vel.y = 0.0f;
                     }
-                    multiplayer.sync(player.pos);
+                    multiplayer.sync(player.pos, player.room);
                 }
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
@@ -1675,7 +1675,7 @@ int main()
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
 
         Image::Draw(player.texture, player.pos, 150);
-        multiplayer.drawRemotePlayers(player.texture);
+        multiplayer.drawRemotePlayers(player.texture, player.room);
         for (const Character& c : characters) {
             if (c.room == player.room) {
                 Image::Draw(c.texture, c.pos, 150);
