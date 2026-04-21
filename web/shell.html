@@ -41,16 +41,187 @@
       pointer-events: none;
       letter-spacing: 0.02em;
     }
+
+    #task-panel {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      width: min(380px, 38vw);
+      max-height: calc(100% - 24px);
+      overflow: auto;
+      color: #e8f1f1;
+      font: 12px/1.35 monospace;
+      background: rgba(0, 0, 0, 0.55);
+      padding: 10px;
+      border-radius: 8px;
+      box-sizing: border-box;
+    }
+
+    #task-panel h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    #task-panel .backend-url {
+      margin-bottom: 8px;
+      color: #b8d2d2;
+      word-break: break-all;
+    }
+
+    #task-panel ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    #task-panel li {
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+
+    #task-panel li.done {
+      opacity: 0.72;
+      text-decoration: line-through;
+    }
+
+    #task-panel .error {
+      color: #ffb8b8;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <canvas id="canvas" tabindex="-1"></canvas>
     <div id="status">loading...</div>
+    <div id="task-panel">
+      <h3>Shared Tasks</h3>
+      <div id="task-backend-url" class="backend-url"></div>
+      <ul id="task-list"></ul>
+      <div id="task-error" class="error"></div>
+    </div>
   </div>
 
   <script>
     var statusEl = document.getElementById("status");
+    var taskListEl = document.getElementById("task-list");
+    var taskBackendEl = document.getElementById("task-backend-url");
+    var taskErrorEl = document.getElementById("task-error");
+
+    var backendBaseUrl = (window.COMMUNITY_BACKEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    taskBackendEl.textContent = "backend: " + backendBaseUrl;
+
+    function setTaskError(message) {
+      taskErrorEl.textContent = message || "";
+    }
+
+    function normalizeTask(task) {
+      return {
+        id: task.id,
+        taskId: task.taskId,
+        name: task.name || task.task_name || "(unnamed task)",
+        room: task.room != null ? task.room : (task.room_id != null ? task.room_id : "?"),
+        completed: Boolean(task.completed),
+        updatedAt: task.updatedAt || task.updated_at || task.completedAt || task.completed_at || ""
+      };
+    }
+
+    function renderTaskList(tasks) {
+      taskListEl.innerHTML = "";
+
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        var emptyEl = document.createElement("li");
+        emptyEl.textContent = "No tasks yet.";
+        taskListEl.appendChild(emptyEl);
+        return;
+      }
+
+      tasks.forEach(function(task) {
+        var normalized = normalizeTask(task);
+        var item = document.createElement("li");
+        if (normalized.completed) {
+          item.classList.add("done");
+        }
+
+        var prefix = normalized.completed ? "[done] " : "[open] ";
+        var suffix = normalized.updatedAt ? (" · " + normalized.updatedAt) : "";
+        item.textContent = prefix + "r" + normalized.room + " · " + normalized.name + suffix;
+        taskListEl.appendChild(item);
+      });
+    }
+
+    async function backendRequest(path, options) {
+      var response = await fetch(backendBaseUrl + path, options);
+      if (!response.ok) {
+        throw new Error(response.status + " " + response.statusText);
+      }
+      return response;
+    }
+
+    async function refreshTasks() {
+      try {
+        setTaskError("");
+        var response = await backendRequest("/tasks", { method: "GET" });
+        var payload = await response.json();
+        var tasks = Array.isArray(payload) ? payload : (Array.isArray(payload.tasks) ? payload.tasks : []);
+        renderTaskList(tasks);
+      } catch (error) {
+        setTaskError("Could not load tasks from backend.\n" + String(error));
+      }
+    }
+
+    async function createTask(name, room, taskId) {
+      try {
+        setTaskError("");
+        await backendRequest("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            room: room,
+            taskId: taskId,
+            completed: false
+          })
+        });
+      } catch (error) {
+        setTaskError("Could not save task to backend.\n" + String(error));
+      }
+
+      await refreshTasks();
+    }
+
+    async function completeTask(name, room, taskId) {
+      try {
+        setTaskError("");
+        await backendRequest("/tasks/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            room: room,
+            taskId: taskId,
+            completed: true
+          })
+        });
+      } catch (error) {
+        setTaskError("Could not mark task complete on backend.\n" + String(error));
+      }
+
+      await refreshTasks();
+    }
+
+    window.CommunityTaskUI = {
+      refreshTasks: refreshTasks,
+      createTask: createTask,
+      completeTask: completeTask
+    };
 
     var Module = {
       canvas: document.getElementById("canvas"),
@@ -64,6 +235,8 @@
       },
       onRuntimeInitialized: function() {
         Module.setStatus("running");
+        refreshTasks();
+        setInterval(refreshTasks, 10000);
       }
     };
 

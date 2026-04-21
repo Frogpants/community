@@ -59,12 +59,35 @@ public:
 #include <emscripten/emscripten.h>
 
 static std::function<void()>* gWebFrame = nullptr;
+static bool gRequestedWebTaskList = false;
 
 static void WebFrameTrampoline() {
     if (gWebFrame != nullptr) {
         (*gWebFrame)();
     }
 }
+
+EM_JS(void, WebFrontendTaskCreated, (const char* taskName, int room, int taskId), {
+    if (window.CommunityTaskUI && typeof window.CommunityTaskUI.createTask === "function") {
+        window.CommunityTaskUI.createTask(UTF8ToString(taskName), room, taskId);
+    }
+});
+
+EM_JS(void, WebFrontendTaskCompleted, (const char* taskName, int room, int taskId), {
+    if (window.CommunityTaskUI && typeof window.CommunityTaskUI.completeTask === "function") {
+        window.CommunityTaskUI.completeTask(UTF8ToString(taskName), room, taskId);
+    }
+});
+
+EM_JS(void, WebFrontendRefreshTasks, (), {
+    if (window.CommunityTaskUI && typeof window.CommunityTaskUI.refreshTasks === "function") {
+        window.CommunityTaskUI.refreshTasks();
+    }
+});
+#else
+static void WebFrontendTaskCreated(const char*, int, int) {}
+static void WebFrontendTaskCompleted(const char*, int, int) {}
+static void WebFrontendRefreshTasks() {}
 #endif
 
 
@@ -478,6 +501,7 @@ bool addTaskForCharacter(Character& character) {
 
     objectives.push_back(task);
     character.tasksGiven += 1;
+    WebFrontendTaskCreated(task.name.c_str(), task.room, task.id);
     return true;
 }
 
@@ -1139,6 +1163,11 @@ int main()
                         player.vel.y = 0.0f;
                     }
                     multiplayer.sync(player.pos, player.room, player.room);
+
+                    if (!gRequestedWebTaskList) {
+                        WebFrontendRefreshTasks();
+                        gRequestedWebTaskList = true;
+                    }
                 }
 
                 multiplayer.setTaskProgress(SerializeTaskProgress(characters));
@@ -1356,6 +1385,7 @@ int main()
                 Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
 
                 objectives.erase(objectives.begin() + activeTaskIndex);
+                WebFrontendTaskCompleted(completedTask.name.c_str(), completedTask.room, completedTask.id);
 
                 if (completedCharacter != nullptr) {
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));

@@ -39,6 +39,40 @@ Notes:
 - If `em++` is still missing, it will try a one-time local bootstrap via `.emsdk/emsdk install latest` and `.emsdk/emsdk activate latest`.
 - Multiplayer is disabled in the web build right now (single-player only).
 
+### Task Backend Contract (for `community_backend`)
+
+The web frontend now sends task events and renders shared tasks from your backend.
+
+Configure backend URL in the browser before loading the game (optional):
+
+```html
+<script>
+	window.COMMUNITY_BACKEND_URL = "http://localhost:3000";
+</script>
+```
+
+If not set, the default is `http://localhost:3000`.
+
+Expected endpoints:
+
+- `GET /tasks`
+	- Returns either an array of tasks, or `{ "tasks": [...] }`
+- `POST /tasks`
+	- Body: `{ "name": string, "room": number, "taskId": number, "completed": false }`
+	- Called when a new objective is added in game
+- `POST /tasks/complete`
+	- Body: `{ "name": string, "room": number, "taskId": number, "completed": true }`
+	- Called when an objective is completed in game
+
+Task object fields read by the UI:
+
+- `name` (or `task_name`)
+- `room` (or `room_id`)
+- `completed` (boolean)
+- Optional timestamp shown in UI: `updatedAt`, `updated_at`, `completedAt`, or `completed_at`
+
+The task panel is rendered as a DOM overlay in the top-right of the web build.
+
 ### GitHub Pages Deployment
 
 This repository includes an Actions workflow at `.github/workflows/deploy-pages.yml` that builds and deploys `dist_web/` to GitHub Pages on pushes to `main`.
