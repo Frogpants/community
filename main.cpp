@@ -25,6 +25,12 @@
 #include <fstream>
 #include <functional>
 #include <unordered_map>
+#include <sstream>
+#include <algorithm>
+#include <iomanip>
+#include <thread>
+#include <sstream>
+#include <algorithm>
 
 #include "game/player.hpp"
 #include "game/character.hpp"
@@ -97,6 +103,106 @@ Camera camera;
 
 std::vector<Character> characters;
 std::vector<Task> objectives;
+
+std::string gLocalPlayerName;
+
+struct TaskPositionOverride {
+    int room = 0;
+    int taskId = 0;
+    std::string taskName;
+    vec2 pos = vec2(0.0f);
+};
+
+const std::string taskPositionOverridesPath = "game/data/task_positions.dat";
+std::vector<TaskPositionOverride> taskPositionOverrides;
+
+bool TryGetTaskPositionOverride(int room, int taskId, const std::string& taskName, vec2& outPos) {
+    if (!taskName.empty()) {
+        for (const TaskPositionOverride& entry : taskPositionOverrides) {
+            if (entry.room == room && !entry.taskName.empty() && entry.taskName == taskName) {
+                outPos = entry.pos;
+                return true;
+            }
+        }
+    }
+
+    for (const TaskPositionOverride& entry : taskPositionOverrides) {
+        if (entry.room == room && entry.taskId == taskId) {
+            outPos = entry.pos;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void UpdateTaskPositionOverride(const Task& task) {
+    for (TaskPositionOverride& entry : taskPositionOverrides) {
+        if (entry.room == task.room && !entry.taskName.empty() && entry.taskName == task.name) {
+            entry.pos = task.pos;
+            entry.taskId = task.id;
+            return;
+        }
+    }
+
+    for (TaskPositionOverride& entry : taskPositionOverrides) {
+        if (entry.room == task.room && entry.taskId == task.id) {
+            entry.pos = task.pos;
+            entry.taskName = task.name;
+            return;
+        }
+    }
+
+    TaskPositionOverride entry;
+    entry.room = task.room;
+    entry.taskId = task.id;
+    entry.taskName = task.name;
+    entry.pos = task.pos;
+    taskPositionOverrides.push_back(entry);
+}
+
+void SaveTaskPositionOverrides(const std::string& filePath) {
+    std::ofstream out(filePath);
+    if (!out.is_open()) {
+        return;
+    }
+
+    for (const TaskPositionOverride& entry : taskPositionOverrides) {
+        out << entry.room << " " << entry.taskId << " " << entry.pos.x << " " << entry.pos.y << " " << std::quoted(entry.taskName) << "\n";
+    }
+}
+
+void LoadTaskPositionOverrides(const std::string& filePath) {
+    taskPositionOverrides.clear();
+
+    std::ifstream in(filePath);
+    if (!in.is_open()) {
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::istringstream lineStream(line);
+        TaskPositionOverride entry;
+        if (!(lineStream >> entry.room >> entry.taskId >> entry.pos.x >> entry.pos.y)) {
+            continue;
+        }
+
+        std::string maybeQuotedName;
+        if (lineStream >> std::ws && !lineStream.eof()) {
+            if (!(lineStream >> std::quoted(maybeQuotedName))) {
+                maybeQuotedName.clear();
+            }
+        }
+
+        entry.taskName = maybeQuotedName;
+        taskPositionOverrides.push_back(entry);
+    }
+}
 
 struct Door {
     vec2 hubPos = vec2(0.0f);
@@ -384,10 +490,18 @@ void SyncTaskToBackend(const std::string& characterName, const std::string& task
         std::cout << characterName << " completed " << taskName << std::endl;
     }
 }
+
+void QueueTaskSyncToBackend(const std::string& characterName, const std::string& taskName, int room, int taskId, bool completed) {
+    std::thread(
+        [characterName, taskName, room, taskId, completed]() {
+            SyncTaskToBackend(characterName, taskName, room, taskId, completed);
+        }
+    ).detach();
+}
 } // namespace
 
 static void WebFrontendTaskSaved(const char* characterName, const char* taskName, int room, int taskId, int completed) {
-    SyncTaskToBackend(
+    QueueTaskSyncToBackend(
         characterName == nullptr ? "" : std::string(characterName),
         taskName == nullptr ? "" : std::string(taskName),
         room,
@@ -397,7 +511,7 @@ static void WebFrontendTaskSaved(const char* characterName, const char* taskName
 }
 
 static void WebFrontendTaskCompleted(const char* characterName, const char* taskName, int room, int taskId) {
-    SyncTaskToBackend(
+    QueueTaskSyncToBackend(
         characterName == nullptr ? "" : std::string(characterName),
         taskName == nullptr ? "" : std::string(taskName),
         room,
@@ -690,7 +804,6 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
-    ApplyTaskPositionOverride(task);
 
     for (const Task& existing : objectives) {
         if (existing.room == task.room && existing.id == task.id) {
@@ -722,7 +835,6 @@ void EnsureObjectiveExists(const Character& character, int taskId) {
     task.name = character.tasks[taskId];
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
-    ApplyTaskPositionOverride(task);
     objectives.push_back(task);
 }
 
