@@ -526,8 +526,29 @@ namespace Minigames {
         vec2 sinkCenter = vec2(panelHalf.x * 0.50f, -20.0f);
         vec2 zoneHalf = vec2(panelHalf.x * 0.36f, panelHalf.y * 0.58f);
 
-        if (!washDishes.initialized || static_cast<int>(washDishes.platePositions.size()) != washDishes.plateCount) {
+        if (washDishes.plateCount <= 0) {
+            washDishes.plateCount = 1;
+        }
+
+        if (!washDishes.initialized ||
+            static_cast<int>(washDishes.platePositions.size()) != washDishes.plateCount ||
+            static_cast<int>(washDishes.plateHomePositions.size()) != washDishes.plateCount ||
+            static_cast<int>(washDishes.plateInSink.size()) != washDishes.plateCount) {
             BuildPlateSlots(tableCenter, zoneHalf);
+        }
+
+        const int plateSlots = std::min(
+            washDishes.plateCount,
+            static_cast<int>(std::min(washDishes.platePositions.size(), std::min(washDishes.plateHomePositions.size(), washDishes.plateInSink.size())))
+        );
+
+        if (plateSlots <= 0) {
+            BuildPlateSlots(tableCenter, zoneHalf);
+            return;
+        }
+
+        if (washDishes.draggingPlate < -1 || washDishes.draggingPlate >= plateSlots) {
+            washDishes.draggingPlate = -1;
         }
 
         if (washDishes.tableTexture != 0) {
@@ -550,7 +571,7 @@ namespace Minigames {
             const vec2 plateHalf = vec2(28.0f);
 
             if (washDishes.draggingPlate == -1 && Mouse::IsPressed(0)) {
-                for (int i = washDishes.plateCount - 1; i >= 0; --i) {
+                for (int i = plateSlots - 1; i >= 0; --i) {
                     if (washDishes.plateInSink[i]) {
                         continue;
                     }
@@ -579,7 +600,7 @@ namespace Minigames {
             }
 
             int sinkIndex = 0;
-            for (int i = 0; i < washDishes.plateCount; ++i) {
+            for (int i = 0; i < plateSlots; ++i) {
                 if (washDishes.plateInSink[i]) {
                     int col = sinkIndex % 2;
                     int row = sinkIndex / 2;
@@ -588,17 +609,17 @@ namespace Minigames {
                 }
             }
 
-            for (int i = 0; i < washDishes.plateCount; ++i) {
+            for (int i = 0; i < plateSlots; ++i) {
                 DrawPlate(washDishes.platePositions[i], 28.0f);
             }
 
-            if (sinkIndex >= washDishes.plateCount) {
+            if (sinkIndex >= plateSlots) {
                 washDishes.phase = WashPhase::PopBubbles;
                 washDishes.bubbleSpawnTimer = 20;
                 washDishes.bubbles.clear();
             }
 
-            std::string plateGoalText = "drag all " + std::to_string(washDishes.plateCount) + " plates from table to sink";
+            std::string plateGoalText = "drag all " + std::to_string(plateSlots) + " plates from table to sink";
             Text::DrawStringCentered(plateGoalText, vec2(0.0f, -panelHalf.y + 58.0f), 14.0f / zoom, 2.1f);
         } else if (washDishes.phase == WashPhase::PopBubbles) {
             washDishes.bubbleSpawnTimer -= 1;

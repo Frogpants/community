@@ -27,21 +27,25 @@ struct Player {
 
     std::vector<std::string> tasks;
 
-    void controls() {
+    void controls(float frameScale = 1.0f) {
+        frameScale = clamp(0.0f, 3.0f, frameScale);
+        float accel = speed * frameScale;
+
         if (Input::IsDown("w")) {
-            vel.y += speed;
+            vel.y += accel;
         }
         if (Input::IsDown("s")) {
-            vel.y -= speed;
+            vel.y -= accel;
         }
         if (Input::IsDown("d")) {
-            vel.x += speed;
+            vel.x += accel;
         }
         if (Input::IsDown("a")) {
-            vel.x -= speed;
+            vel.x -= accel;
         }
 
-        vel = vel * 0.7;
+        float damping = std::pow(0.7f, frameScale);
+        vel = vel * damping;
 
         if (std::abs(pos.x) > screen.x + screen.x*0.5) {
             vel.x = 0.0;

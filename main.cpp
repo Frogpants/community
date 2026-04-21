@@ -1112,6 +1112,8 @@ int main()
         }
     };
 
+    double lastFrameTime = glfwGetTime();
+
     auto frame = [&]() {
         if (glfwWindowShouldClose(window)) {
         #ifndef __EMSCRIPTEN__
@@ -1123,6 +1125,16 @@ int main()
         }
 
         glfwPollEvents();
+
+        double now = glfwGetTime();
+        double deltaTime = now - lastFrameTime;
+        lastFrameTime = now;
+        if (deltaTime < 0.0) {
+            deltaTime = 0.0;
+        } else if (deltaTime > 0.25) {
+            deltaTime = 0.25;
+        }
+        float frameScale = static_cast<float>(deltaTime * 60.0);
 
         glClearColor(0.0f, 0.0f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -1548,9 +1560,9 @@ int main()
                 camera.follow();
 
                 if (!Minigames::IsTaskOpen()) {
-                    player.controls();
+                    player.controls(frameScale);
                     vec2 oldPlayerPos = player.pos;
-                    player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel, player.room, tiles);
+                    player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel * frameScale, player.room, tiles);
                     if (player.pos.x == oldPlayerPos.x) {
                         player.vel.x = 0.0f;
                     }
@@ -1631,6 +1643,10 @@ int main()
                 ++id;
                 continue;
             }
+
+            float exclamationBob = 12.0f + 8.0f * std::sin(timer * 6.0f + static_cast<float>(id));
+            vec2 exclamationPos = t.pos + vec2(0.0f, t.dim.y + exclamationBob);
+            Text::DrawStringCentered("!", exclamationPos, 18.0f, 1.0f);
 
             if (!Minigames::IsTaskOpen() && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
                 Minigames::OpenTask(id, t.name, t.room);
