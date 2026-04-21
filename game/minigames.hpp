@@ -96,6 +96,7 @@ namespace Minigames {
     struct LaundryState {
         bool initialized = false;
         GLuint outsideMachineTexture = 0;
+        GLuint insideMachineTexture = 0;
         float washProgress = 0.0f;
         bool started = false;
         bool completionSent = false;
@@ -281,6 +282,9 @@ namespace Minigames {
 
         if (laundry.outsideMachineTexture == 0) {
             laundry.outsideMachineTexture = loadLaundryTexture("outsideMachine.png");
+        }
+        if (laundry.insideMachineTexture == 0) {
+            laundry.insideMachineTexture = loadLaundryTexture("insideMachine.png");
         }
 
         laundry.initialized = true;
@@ -726,14 +730,22 @@ namespace Minigames {
             InitializeLaundryAssets();
         }
 
-        vec2 machineCenter = vec2(0.0f, -12.0f);
-        vec2 machineHalf = vec2(panelHalf.x * 0.34f, panelHalf.y * 0.48f);
+        vec2 machineCenter = vec2(0.0f, -6.0f);
+        vec2 machineHalf = vec2(panelHalf.x * 0.21f, panelHalf.y * 0.52f);
 
         if (laundry.outsideMachineTexture != 0) {
             Image::Draw(laundry.outsideMachineTexture, machineCenter, machineHalf, 0.0f);
         } else {
             Image::DrawRect(machineCenter, machineHalf, 0.74f, 0.76f, 0.80f, 1.0f, 0.0f);
-            Image::DrawRect(machineCenter + vec2(0.0f, 40.0f), vec2(machineHalf.x * 0.60f, machineHalf.y * 0.38f), 0.50f, 0.53f, 0.58f, 1.0f, 0.0f);
+            Image::DrawRect(machineCenter + vec2(0.0f, 46.0f), vec2(machineHalf.x * 0.54f, machineHalf.y * 0.34f), 0.50f, 0.53f, 0.58f, 1.0f, 0.0f);
+        }
+
+        vec2 insideCenter = machineCenter + vec2(0.0f, 8.0f);
+        vec2 insideSize = vec2(machineHalf.x * 0.96f, machineHalf.x * 0.96f);
+        if (laundry.insideMachineTexture != 0) {
+            Image::Draw(laundry.insideMachineTexture, insideCenter, insideSize, laundry.started ? laundry.washProgress * 360.0f : 0.0f);
+        } else {
+            Image::DrawRect(insideCenter, insideSize, 0.92f, 0.93f, 0.96f, 0.75f, laundry.started ? laundry.washProgress * 360.0f : 0.0f);
         }
 
         bool holdingToWash = Mouse::IsDown(0) && BoxCollide(mouseUI, vec2(0.0f), machineCenter, machineHalf);
@@ -747,9 +759,10 @@ namespace Minigames {
             laundry.washProgress -= drainRate;
         }
 
-        laundry.washProgress = std::clamp(laundry.washProgress, 0.0f, 1.0f);
-        if (laundry.washProgress <= 0.0f) {
+        if (laundry.washProgress < 0.0f) {
             laundry.washProgress = 0.0f;
+        } else if (laundry.washProgress > 1.0f) {
+            laundry.washProgress = 1.0f;
         }
 
         vec2 barCenter = vec2(0.0f, -panelHalf.y + 102.0f);
@@ -766,8 +779,8 @@ namespace Minigames {
         }
 
         int percent = static_cast<int>(laundry.washProgress * 100.0f + 0.5f);
-        Text::DrawStringCentered("hold click on washer to start", vec2(0.0f, -panelHalf.y + 56.0f), 14.0f / zoom, 2.1f);
-        Text::DrawStringCentered("wash progress " + std::to_string(percent) + "%", vec2(0.0f, -panelHalf.y + 134.0f), 13.0f / zoom, 2.0f);
+        Text::DrawStringCentered("wash progress " + std::to_string(percent) + "%", vec2(0.0f, -panelHalf.y + 56.0f), 13.0f / zoom, 2.0f);
+        Text::DrawStringCentered("click and hold on washer to start", vec2(0.0f, -panelHalf.y + 134.0f), 14.0f / zoom, 2.1f);
 
         if (laundry.started && laundry.washProgress >= 1.0f) {
             Image::DrawRect(vec2(0.0f, -20.0f), vec2(panelHalf.x * 0.70f, 90.0f), 0.76f, 0.90f, 0.78f, 1.0f, 0.0f);
