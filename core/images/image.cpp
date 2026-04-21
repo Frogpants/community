@@ -75,7 +75,7 @@ namespace Image {
     ////////////////////////////////////////////////////////////
     // LOAD TEXTURE
     ////////////////////////////////////////////////////////////
-    GLuint Load(const char* filename)
+    GLuint Load(const char* filename, bool logFailure)
     {
         std::string exeDir = GetExeDir();
 
@@ -105,7 +105,9 @@ namespace Image {
         }
 
         if (!data) {
-            std::cout << "Failed to load texture: " << fullPath << std::endl;
+            if (logFailure) {
+                std::cout << "Failed to load texture: " << filename << std::endl;
+            }
             return 0;
         }
 

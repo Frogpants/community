@@ -258,6 +258,8 @@ void SyncTaskToBackend(const std::string& characterName, const std::string& task
     if (response.statusCode < 200 || response.statusCode >= 300) {
         std::cout << "Task sync failed (" << response.statusCode << ") for "
                   << taskName << " in room " << room << std::endl;
+    } else if (completed) {
+        std::cout << characterName << " completed " << taskName << std::endl;
     }
 }
 } // namespace
@@ -633,7 +635,7 @@ int main()
     std::vector<vec2> houseFootprints;
 
     tilesetStartId = static_cast<int>(tileTextures.size());
-    tilesetTexture = Image::Load("dist/assets/tileset/tileset1.png");
+    tilesetTexture = Image::Load("dist/assets/tileset/tileset1.png", false);
     if (tilesetTexture == 0) {
         tilesetTexture = Image::Load("assets/tileset/tileset1.png");
     }
@@ -645,7 +647,7 @@ int main()
     }
 
     platformStartId = tilesetStartId + tilesetCount;
-    platformTexture = Image::Load("dist/assets/PlatformerPack/OverWorldPropsTowns.png");
+    platformTexture = Image::Load("dist/assets/PlatformerPack/OverWorldPropsTowns.png", false);
     if (platformTexture == 0) {
         platformTexture = Image::Load("assets/PlatformerPack/OverWorldPropsTowns.png");
     }
@@ -665,7 +667,7 @@ int main()
     };
 
     for (const std::string& houseFile : houseFiles) {
-        GLuint houseTexture = Image::Load(("dist/assets/" + houseFile).c_str());
+        GLuint houseTexture = Image::Load(("dist/assets/" + houseFile).c_str(), false);
         if (houseTexture == 0) {
             houseTexture = Image::Load(("assets/" + houseFile).c_str());
         }
@@ -734,7 +736,7 @@ int main()
     int nextRoomId = 2;
 
     GLuint taskTex = Image::Load("assets/box.png");
-    GLuint treeTex = Image::Load("dist/assets/tree.png");
+    GLuint treeTex = Image::Load("dist/assets/tree.png", false);
     if (treeTex == 0) {
         treeTex = Image::Load("assets/tree.png");
     }
@@ -1336,12 +1338,12 @@ int main()
                     }
                 }
 
-                std::string completedBy = completedTask.assignedBy;
+                std::string completedBy = gLocalPlayerName;
+                if (completedBy.empty()) {
+                    completedBy = completedTask.assignedBy;
+                }
                 if (completedBy.empty() && completedCharacter != nullptr) {
                     completedBy = completedCharacter->name;
-                }
-                if (completedBy.empty()) {
-                    completedBy = gLocalPlayerName;
                 }
 
                 WebFrontendTaskCompleted(completedBy.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);

@@ -11,7 +11,7 @@
 namespace Image {
 
     bool Init();
-    GLuint Load(const char* path);
+    GLuint Load(const char* path, bool logFailure = true);
     bool GetTextureSize(GLuint texture, int& width, int& height);
     void Draw(GLuint texture, vec2 pos, float size, float angle = 0.0);
     void Draw(GLuint texture, vec2 pos, vec2 size, float angle = 0.0);

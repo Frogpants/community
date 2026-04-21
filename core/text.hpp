@@ -64,7 +64,7 @@ namespace Text {
         std::string symbolName = SymbolFileName(c);
         if (!symbolName.empty()) {
             std::string symbolPath = "assets/text/" + symbolName;
-            GLuint tex = Image::Load(symbolPath.c_str());
+            GLuint tex = Image::Load(symbolPath.c_str(), false);
             if (tex != 0) {
                 charTextures[c] = tex;
                 return true;
@@ -74,7 +74,7 @@ namespace Text {
         std::string legacyName = LegacyFileName(c);
         if (!legacyName.empty()) {
             std::string legacyPath = "assets/text/" + legacyName;
-            GLuint tex = Image::Load(legacyPath.c_str());
+            GLuint tex = Image::Load(legacyPath.c_str(), false);
             if (tex != 0) {
                 charTextures[c] = tex;
                 return true;

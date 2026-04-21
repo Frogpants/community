@@ -175,7 +175,7 @@ namespace Minigames {
             };
 
             for (const std::string& path : candidates) {
-                GLuint tex = Image::Load(path.c_str());
+                GLuint tex = Image::Load(path.c_str(), false);
                 if (tex != 0) {
                     return tex;
                 }
@@ -213,7 +213,7 @@ namespace Minigames {
             };
 
             for (const std::string& path : candidates) {
-                GLuint tex = Image::Load(path.c_str());
+                GLuint tex = Image::Load(path.c_str(), false);
                 if (tex != 0) {
                     return tex;
                 }
@@ -271,7 +271,7 @@ namespace Minigames {
             };
 
             for (const std::string& path : candidates) {
-                GLuint tex = Image::Load(path.c_str());
+                GLuint tex = Image::Load(path.c_str(), false);
                 if (tex != 0) {
                     return tex;
                 }
