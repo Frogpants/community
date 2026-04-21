@@ -56,11 +56,19 @@ public:
 
 static std::function<void()>* gWebFrame = nullptr;
 
+EM_JS(void, WebFrontendTaskCompleted, (const char* userName, const char* taskName, int room, int taskId), {
+    if (window.CommunityTaskUI && typeof window.CommunityTaskUI.completeTask === "function") {
+        window.CommunityTaskUI.completeTask(UTF8ToString(userName), UTF8ToString(taskName), room, taskId);
+    }
+});
+
 static void WebFrameTrampoline() {
     if (gWebFrame != nullptr) {
         (*gWebFrame)();
     }
 }
+#else
+static void WebFrontendTaskCompleted(const char*, const char*, int, int) {}
 #endif
 
 
@@ -161,6 +169,7 @@ float zoom = 2.0;
 int running = 1;
 bool inMainMenu = true;
 bool multiplayerStarted = false;
+std::string gLocalPlayerName;
 
 std::string getEnvOrDefault(const char* key, const std::string& fallback) {
     const char* value = std::getenv(key);
@@ -649,7 +658,8 @@ int main()
 
     MultiplayerClient multiplayer;
     multiplayer.setServer(getEnvOrDefault("COMMUNITY_BACKEND_HOST", server.c_str()), getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080));
-    multiplayer.setPlayerName(getEnvOrDefault("COMMUNITY_PLAYER_NAME", getRandomUsername()));
+    gLocalPlayerName = getEnvOrDefault("COMMUNITY_PLAYER_NAME", getRandomUsername());
+    multiplayer.setPlayerName(gLocalPlayerName);
     std::string requestedRoomCode = getEnvOrDefault("COMMUNITY_ROOM_CODE", "");
 
     float menuScale = 1.0;
@@ -1232,6 +1242,8 @@ int main()
                         spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
                     }
                 }
+
+                WebFrontendTaskCompleted(gLocalPlayerName.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);
             }
 
             Minigames::CloseTask();
