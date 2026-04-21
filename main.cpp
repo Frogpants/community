@@ -19,6 +19,8 @@
 #include <ctime>
 #include <cmath>
 #include <string>
+#include <sstream>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -237,6 +239,73 @@ float zoom = 2.0;
 int running = 1;
 bool inMainMenu = true;
 bool multiplayerStarted = false;
+std::string gLocalPlayerName;
+
+const std::string taskPositionOverridesPath = "game/data/task_positions.dat";
+std::unordered_map<std::string, vec2> taskPositionOverrides;
+
+std::string GetTaskPositionOverrideKey(int room, int taskId) {
+    return std::to_string(room) + ":" + std::to_string(taskId);
+}
+
+void ApplyTaskPositionOverride(Task& task) {
+    const auto it = taskPositionOverrides.find(GetTaskPositionOverrideKey(task.room, task.id));
+    if (it != taskPositionOverrides.end()) {
+        task.pos = it->second;
+    }
+}
+
+void UpdateTaskPositionOverride(const Task& task) {
+    taskPositionOverrides[GetTaskPositionOverrideKey(task.room, task.id)] = task.pos;
+}
+
+void LoadTaskPositionOverrides(const std::string& path) {
+    taskPositionOverrides.clear();
+
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream lineStream(line);
+        int room = 0;
+        int taskId = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+
+        if (!(lineStream >> room >> taskId >> x >> y)) {
+            continue;
+        }
+
+        taskPositionOverrides[GetTaskPositionOverrideKey(room, taskId)] = vec2(x, y);
+    }
+}
+
+void SaveTaskPositionOverrides(const std::string& path) {
+    std::ofstream out(path, std::ios::trunc);
+    if (!out.is_open()) {
+        std::cout << "Failed to save task position overrides: " << path << std::endl;
+        return;
+    }
+
+    for (const auto& [key, pos] : taskPositionOverrides) {
+        std::size_t separator = key.find(':');
+        if (separator == std::string::npos) {
+            continue;
+        }
+
+        out << key.substr(0, separator) << ' '
+            << key.substr(separator + 1) << ' '
+            << pos.x << ' '
+            << pos.y << '\n';
+    }
+}
 
 std::string getEnvOrDefault(const char* key, const std::string& fallback) {
     const char* value = std::getenv(key);
@@ -621,6 +690,7 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
+    ApplyTaskPositionOverride(task);
 
     for (const Task& existing : objectives) {
         if (existing.room == task.room && existing.id == task.id) {
@@ -652,6 +722,7 @@ void EnsureObjectiveExists(const Character& character, int taskId) {
     task.name = character.tasks[taskId];
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
+    ApplyTaskPositionOverride(task);
     objectives.push_back(task);
 }
 
