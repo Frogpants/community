@@ -744,6 +744,7 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
+    ApplyTaskPositionOverride(task);
 
     for (const Task& existing : objectives) {
         if (existing.room == task.room && existing.id == task.id) {
@@ -775,6 +776,7 @@ void EnsureObjectiveExists(const Character& character, int taskId) {
     task.name = character.tasks[taskId];
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
+    ApplyTaskPositionOverride(task);
     objectives.push_back(task);
 }
 
