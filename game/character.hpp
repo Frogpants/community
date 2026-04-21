@@ -10,7 +10,7 @@
 
 
 struct Character {
-    vec2 pos = vec2(0.0);
+    vec2 pos = vec2(0.0, 32.0);
     vec2 dim = vec2(45.0);
     float health = 100.0;
 

@@ -4,6 +4,7 @@
 
 #include "input/input.hpp"
 #include "mouse/mouse.hpp"
+#include "ui/ui.hpp"
 #include "essentials.hpp"
 
 inline float gamemode = 0.0f;
@@ -23,9 +24,11 @@ namespace Manager {
 
         Input::Init(window);
         Mouse::Init(window);
+        UI::Init(window);
     }
 
     inline void Update() {
+        UI::Update();
         Input::Update();
         Mouse::Update();
     }

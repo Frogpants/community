@@ -5,6 +5,7 @@
 #include "../core/images/image.hpp"
 #include "../core/text.hpp"
 #include "../core/mouse/mouse.hpp"
+#include "../core/ui/ui.hpp"
 #include "task.hpp"
 
 #include <string>
@@ -117,6 +118,75 @@ namespace Minigames {
     inline bool takeOutTrashDropoffPlacementRequested = false;
     inline int takeOutTrashDropoffRequestedRoom = -1;
     inline std::string takeOutTrashDropoffRequestedTaskName;
+
+    inline bool taskPopupUiInitialized = false;
+    inline bool taskPopupCloseRequested = false;
+    inline vec2 taskPopupFullSize = vec2(0.0f);
+    inline vec2 taskPopupPanelHalf = vec2(0.0f);
+    inline float taskPopupZoom = 1.0f;
+    inline std::string taskPopupTitle;
+    inline Menu* taskPopupControlsMenu = nullptr;
+    inline int taskCompletionDisplayFrames = 0;
+
+    inline Menu* EnsureTaskPopupUiMenu() {
+        Menu* menu = UI::FindMenu("minigame-task-popup");
+        if (menu != nullptr && taskPopupUiInitialized) {
+            return menu;
+        }
+
+        if (menu == nullptr) {
+            menu = &UI::CreateMenu("minigame-task-popup");
+        }
+
+        menu->panels.clear();
+        menu->images.clear();
+        menu->labels.clear();
+        menu->buttons.clear();
+
+        UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), vec2(10.0f), vec4(0.0f, 0.0f, 0.0f, 0.65f));
+        overlay.dynamicDim = []() {
+            return taskPopupFullSize;
+        };
+
+        UiPanel& panelShadow = UI::AddPanel(*menu, "panel-shadow", vec2(0.0f), vec2(100.0f), vec4(0.12f, 0.12f, 0.14f, 1.0f));
+        panelShadow.dynamicDim = []() {
+            return taskPopupPanelHalf + vec2(12.0f);
+        };
+
+        UiPanel& panelBody = UI::AddPanel(*menu, "panel-body", vec2(0.0f), vec2(100.0f), vec4(0.96f, 0.96f, 0.98f, 1.0f));
+        panelBody.dynamicDim = []() {
+            return taskPopupPanelHalf;
+        };
+
+        UiPanel& panelHeader = UI::AddPanel(*menu, "panel-header", vec2(0.0f), vec2(100.0f), vec4(0.18f, 0.18f, 0.22f, 1.0f));
+        panelHeader.dynamicPos = []() {
+            return vec2(0.0f, taskPopupPanelHalf.y - 46.0f);
+        };
+        panelHeader.dynamicDim = []() {
+            return vec2(taskPopupPanelHalf.x - 14.0f, 34.0f);
+        };
+
+        UiLabel& title = UI::AddLabel(*menu, "panel-title", "", vec2(0.0f), 24.0f, true);
+        title.dynamicPos = []() {
+            return vec2(0.0f, taskPopupPanelHalf.y - 56.0f);
+        };
+
+        Button& close = UI::AddButton(*menu, "panel-close", "x", vec2(0.0f), vec2(18.0f), 0);
+        close.labelSize = 18.0f;
+        close.labelSpacing = 2.4f;
+        close.fallbackColor = vec4(0.74f, 0.20f, 0.20f, 1.0f);
+        close.fallbackHoverColor = vec4(0.88f, 0.20f, 0.20f, 1.0f);
+        close.fallbackPressedColor = vec4(0.62f, 0.14f, 0.14f, 1.0f);
+        close.dynamicPos = []() {
+            return vec2(taskPopupPanelHalf.x - 30.0f, taskPopupPanelHalf.y - 30.0f);
+        };
+        close.onClick = []() {
+            taskPopupCloseRequested = true;
+        };
+
+        taskPopupUiInitialized = true;
+        return menu;
+    }
 
     inline bool IsWashDishesTask() {
         return activeTaskName == "wash dishes";
@@ -606,13 +676,17 @@ namespace Minigames {
 
             vec2 retryCenter = vec2(0.0f, -78.0f);
             vec2 retryHalf = vec2(82.0f, 24.0f);
-            bool hoveringRetry = BoxCollide(mouseUI, vec2(0.0f), retryCenter, retryHalf);
-            Image::DrawRect(retryCenter, retryHalf, hoveringRetry ? 0.18f : 0.25f, hoveringRetry ? 0.58f : 0.50f, 0.84f, 1.0f, 0.0f);
-            Text::DrawStringCentered("retry", retryCenter - vec2(0.0f, 6.0f), 16.0f / zoom, 2.2f);
-
-            if (hoveringRetry && Mouse::IsPressed(0)) {
-                ResetWashDishesState();
-                BuildPlateSlots(tableCenter, zoneHalf);
+            if (taskPopupControlsMenu != nullptr) {
+                Button& retry = UI::AddButton(*taskPopupControlsMenu, "wash-retry", "retry", retryCenter, retryHalf, 0);
+                retry.labelSize = 16.0f / zoom;
+                retry.labelSpacing = 2.2f;
+                retry.fallbackColor = vec4(0.25f, 0.50f, 0.84f, 1.0f);
+                retry.fallbackHoverColor = vec4(0.18f, 0.58f, 0.84f, 1.0f);
+                retry.fallbackPressedColor = vec4(0.14f, 0.44f, 0.66f, 1.0f);
+                retry.onClick = [tableCenter, zoneHalf]() {
+                    ResetWashDishesState();
+                    BuildPlateSlots(tableCenter, zoneHalf);
+                };
             }
         }
     }
@@ -693,34 +767,37 @@ namespace Minigames {
 
             vec2 continueCenter = vec2(0.0f, -84.0f);
             vec2 continueHalf = vec2(140.0f, 24.0f);
-            bool hoveringContinue = BoxCollide(mouseUI, vec2(0.0f), continueCenter, continueHalf);
-            Image::DrawRect(continueCenter, continueHalf, hoveringContinue ? 0.22f : 0.29f, hoveringContinue ? 0.60f : 0.52f, 0.28f, 1.0f, 0.0f);
-            Text::DrawStringCentered("go outside", continueCenter - vec2(0.0f, 6.0f), 15.0f / zoom, 2.1f);
-
-            if (hoveringContinue && Mouse::IsPressed(0)) {
-                bool alreadyPending = false;
-                for (const PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
-                    if (dropoff.active && dropoff.taskRoom == activeTaskRoom && dropoff.taskName == activeTaskName) {
-                        alreadyPending = true;
-                        break;
+            if (taskPopupControlsMenu != nullptr) {
+                Button& goOutside = UI::AddButton(*taskPopupControlsMenu, "trash-go-outside", "go outside", continueCenter, continueHalf, 0);
+                goOutside.labelSize = 15.0f / zoom;
+                goOutside.labelSpacing = 2.1f;
+                goOutside.fallbackColor = vec4(0.29f, 0.52f, 0.28f, 1.0f);
+                goOutside.fallbackHoverColor = vec4(0.22f, 0.60f, 0.28f, 1.0f);
+                goOutside.fallbackPressedColor = vec4(0.18f, 0.44f, 0.22f, 1.0f);
+                goOutside.onClick = []() {
+                    bool alreadyPending = false;
+                    for (const PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
+                        if (dropoff.active && dropoff.taskRoom == activeTaskRoom && dropoff.taskName == activeTaskName) {
+                            alreadyPending = true;
+                            break;
+                        }
                     }
-                }
 
-                if (!alreadyPending) {
-                    PendingTrashDropoff dropoff;
-                    dropoff.taskName = activeTaskName;
-                    dropoff.taskRoom = activeTaskRoom;
-                    pendingTrashDropoffs.push_back(dropoff);
-                }
+                    if (!alreadyPending) {
+                        PendingTrashDropoff dropoff;
+                        dropoff.taskName = activeTaskName;
+                        dropoff.taskRoom = activeTaskRoom;
+                        pendingTrashDropoffs.push_back(dropoff);
+                    }
 
-                takeOutTrashDropoffPlacementRequested = true;
-                takeOutTrashDropoffRequestedRoom = activeTaskRoom;
-                takeOutTrashDropoffRequestedTaskName = activeTaskName;
-                taskOpen = false;
-                activeTaskIndex = -1;
-                activeTaskRoom = -1;
-                activeTaskName.clear();
-                return;
+                    takeOutTrashDropoffPlacementRequested = true;
+                    takeOutTrashDropoffRequestedRoom = activeTaskRoom;
+                    takeOutTrashDropoffRequestedTaskName = activeTaskName;
+                    taskOpen = false;
+                    activeTaskIndex = -1;
+                    activeTaskRoom = -1;
+                    activeTaskName.clear();
+                };
             }
         }
     }
@@ -859,6 +936,7 @@ namespace Minigames {
             completionTaskRoom = dropoff.taskRoom;
             completionTaskName = dropoff.taskName;
             taskCompleteRequested = true;
+            taskOpen = true;
             break;
         }
     }
@@ -916,6 +994,10 @@ namespace Minigames {
         taskCompleteRequested = false;
         activeTaskIndex = -1;
         activeTaskRoom = -1;
+        taskPopupCloseRequested = false;
+        taskPopupUiInitialized = false;
+        taskPopupControlsMenu = nullptr;
+        taskCompletionDisplayFrames = 0;
 
         if (IsWashDishesTask()) {
             ResetWashDishesState();
@@ -930,6 +1012,11 @@ namespace Minigames {
         }
 
         activeTaskName.clear();
+    }
+
+    inline void DeleteTaskUI() {
+        UI::RemoveMenu("minigame-task-popup");
+        UI::RemoveMenu("minigame-task-controls");
     }
 
     inline bool IsTaskOpen() {
@@ -976,42 +1063,102 @@ namespace Minigames {
 
     inline bool DrawTaskPopup(vec2 screen, float zoom, vec2 mouseUI) {
         if (!taskOpen) {
+            // Hide menus if not completed, only remove if task was completed
+            Menu* popupMenu = UI::FindMenu("minigame-task-popup");
+            Menu* controlsMenu = UI::FindMenu("minigame-task-controls");
+            
+            if (taskCompletionDisplayFrames > 0) {
+                // Task was completed, so remove the UI
+                taskPopupUiInitialized = false;
+                taskPopupControlsMenu = nullptr;
+                taskCompletionDisplayFrames = 0;
+                UI::RemoveMenu("minigame-task-popup");
+                UI::RemoveMenu("minigame-task-controls");
+            } else {
+                // Task was closed without completing, just hide the UI
+                if (popupMenu != nullptr) {
+                    popupMenu->visible = false;
+                    popupMenu->enabled = false;
+                }
+                if (controlsMenu != nullptr) {
+                    controlsMenu->visible = false;
+                    controlsMenu->enabled = false;
+                }
+            }
             return false;
         }
 
-        const float titleSpacing = 2.4f;
+        taskPopupFullSize = screen / zoom;
+        taskPopupPanelHalf = vec2(taskPopupFullSize.x * 0.56f, taskPopupFullSize.y * 0.50f);
+        taskPopupZoom = zoom;
+        taskPopupTitle = activeTaskName;
 
-        vec2 fullSize = screen / zoom;
-        vec2 overlayHalf = fullSize;
-        Image::DrawRect(vec2(0.0f, 0.0f), overlayHalf, 0.0f, 0.0f, 0.0f, 0.65f, 0.0f);
+        // Auto-close task after completion is shown for a brief time
+        if (taskCompleteRequested) {
+            taskCompletionDisplayFrames++;
+            if (taskCompletionDisplayFrames >= 120) {  // ~2 seconds at 60fps
+                DeleteTaskUI();
+                CloseTask();
+                return true;
+            }
+        } else {
+            taskCompletionDisplayFrames = 0;
+        }
 
-        vec2 panelHalf = vec2(fullSize.x * 0.56f, fullSize.y * 0.50f);
-        Image::DrawRect(vec2(0.0f, 0.0f), panelHalf + vec2(12.0f), 0.12f, 0.12f, 0.14f, 1.0f, 0.0f);
-        Image::DrawRect(vec2(0.0f, 0.0f), panelHalf, 0.96f, 0.96f, 0.98f, 1.0f, 0.0f);
+        Menu* popupMenu = EnsureTaskPopupUiMenu();
+        if (popupMenu != nullptr) {
+            popupMenu->visible = true;
+            popupMenu->enabled = true;
 
-        vec2 headerHalf = vec2(panelHalf.x - 14.0f, 34.0f);
-        vec2 headerPos = vec2(0.0f, panelHalf.y - 46.0f);
-        Image::DrawRect(headerPos, headerHalf, 0.18f, 0.18f, 0.22f, 1.0f, 0.0f);
+            for (UiLabel& label : popupMenu->labels) {
+                if (label.id == "panel-title") {
+                    label.text = taskPopupTitle;
+                    label.size = 24.0f / zoom;
+                    break;
+                }
+            }
 
-        vec2 closeCenter = vec2(panelHalf.x - 30.0f, panelHalf.y - 30.0f);
-        vec2 closeHalf = vec2(18.0f);
-        bool hoveringClose = BoxCollide(mouseUI, vec2(0.0f), closeCenter, closeHalf);
-        Image::DrawRect(closeCenter, closeHalf, hoveringClose ? 0.88f : 0.74f, 0.20f, 0.20f, 1.0f, 0.0f);
-        Text::DrawStringCentered("x", closeCenter - vec2(0.0f, 5.0f), 18.0f / zoom, titleSpacing);
+            for (Button& button : popupMenu->buttons) {
+                if (button.id == "panel-close") {
+                    button.labelSize = 18.0f / zoom;
+                    break;
+                }
+            }
 
-        Text::DrawStringCentered(activeTaskName, vec2(0.0f, panelHalf.y - 56.0f), 24.0f / zoom, titleSpacing);
+            popupMenu->update(mouseUI);
+            popupMenu->draw();
+        }
+
+        Menu* controlsMenu = UI::FindMenu("minigame-task-controls");
+        if (controlsMenu == nullptr) {
+            controlsMenu = &UI::CreateMenu("minigame-task-controls");
+        }
+        controlsMenu->panels.clear();
+        controlsMenu->images.clear();
+        controlsMenu->labels.clear();
+        controlsMenu->buttons.clear();
+        controlsMenu->visible = true;
+        controlsMenu->enabled = true;
+        taskPopupControlsMenu = controlsMenu;
 
         if (IsWashDishesTask()) {
-            DrawWashDishesContent(panelHalf, zoom, mouseUI);
+            DrawWashDishesContent(taskPopupPanelHalf, zoom, mouseUI);
         } else if (IsTakeOutTrashTask()) {
-            DrawTakeOutTrashContent(panelHalf, zoom, mouseUI);
+            DrawTakeOutTrashContent(taskPopupPanelHalf, zoom, mouseUI);
         } else if (IsLaundryTask()) {
-            DrawLaundryContent(panelHalf, zoom, mouseUI);
+            DrawLaundryContent(taskPopupPanelHalf, zoom, mouseUI);
         } else {
             DrawGenericTaskContent(zoom);
         }
 
-        if (hoveringClose && Mouse::IsPressed(0)) {
+        if (controlsMenu != nullptr) {
+            controlsMenu->update(mouseUI);
+            controlsMenu->draw();
+        }
+        taskPopupControlsMenu = nullptr;
+
+        if (taskPopupCloseRequested) {
+            taskPopupCloseRequested = false;
             CloseTask();
             return true;
         }

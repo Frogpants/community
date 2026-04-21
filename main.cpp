@@ -19,6 +19,8 @@
 #include <ctime>
 #include <cmath>
 #include <string>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <unordered_map>
 
@@ -124,6 +126,51 @@ std::vector<std::string> loadAssetFiles(const std::string& relativePath) {
     return grabFiles("assets/" + relativePath);
 }
 
+struct HouseTilesetGroup {
+    std::string name;
+    int start = 0;
+    std::vector<std::string> files;
+    std::vector<GLuint> textures;
+};
+
+std::string getFileBaseName(const std::string& filePath) {
+    return std::filesystem::path(filePath).filename().string();
+}
+
+std::vector<HouseTilesetGroup> loadHouseTilesets() {
+    std::vector<HouseTilesetGroup> groups;
+
+    groups.push_back(HouseTilesetGroup{
+        "walls-floors",
+        0,
+        loadAssetFiles("house/walls-floors"),
+        {}
+    });
+
+    groups.push_back(HouseTilesetGroup{
+        "furniture",
+        0,
+        loadAssetFiles("house/furniture"),
+        {}
+    });
+
+    groups.push_back(HouseTilesetGroup{
+        "pets",
+        0,
+        loadAssetFiles("house/pets"),
+        {}
+    });
+
+    int nextStart = 0;
+    for (HouseTilesetGroup& group : groups) {
+        group.start = nextStart;
+        group.textures = loadTextures(group.files);
+        nextStart += static_cast<int>(group.textures.size());
+    }
+
+    return groups;
+}
+
 std::vector<std::string> tileTex = loadTileLibrary();
 std::vector<std::string> itemTex = loadAssetFiles("items");
 std::vector<std::string> heartTex = loadAssetFiles("stats/health");
@@ -161,9 +208,16 @@ const int platformTilePixels = 16;
 GLuint platformTexture = 0;
 int houseStartId = 0;
 int houseCount = 0;
+int houseTilesetStartId = 0;
+int houseTilesetCount = 0;
+int houseTilesetGroup = 0;
+int houseTilesetTile = 0;
+std::vector<HouseTilesetGroup> houseTilesets;
 bool editorNextRoomHeld = false;
 bool editorPrevRoomHeld = false;
 bool editorHintsOpen = false;
+bool editorTaskPlacementMode = false;
+int editorDraggedObjectiveIndex = -1;
 
 const int treeSpawnMarkerTileId = -100;
 const int collisionMarkerTileId = -101;
@@ -183,7 +237,6 @@ float zoom = 2.0;
 int running = 1;
 bool inMainMenu = true;
 bool multiplayerStarted = false;
-std::string gLocalPlayerName;
 
 std::string getEnvOrDefault(const char* key, const std::string& fallback) {
     const char* value = std::getenv(key);
@@ -310,7 +363,7 @@ Character makeCharacterForRoom(int roomId, int stageIndex) {
     c.room = roomId;
 
     int xBucket = ((roomId * 37) % 5) - 2;
-    int yBucket = ((roomId * 53) % 3) - 1;
+    int yBucket = -2;
     c.pos = vec2(300.0f + static_cast<float>(xBucket * 80), static_cast<float>(yBucket * 64));
     c.target = c.pos;
     c.roamCenter = c.pos;
@@ -414,7 +467,7 @@ bool collidesWithCollisionMarker(const vec2& pos, const vec2& dim, int room, con
             continue;
         }
 
-        if (BoxCollide(pos, dim, tile.pos, vec2(32.0f))) {
+        if (BoxCollide(pos, dim, tile.pos, vec2(16.0f))) {
             return true;
         }
     }
@@ -568,6 +621,13 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
+
+    for (const Task& existing : objectives) {
+        if (existing.room == task.room && existing.id == task.id) {
+            return false;
+        }
+    }
+
     objectives.push_back(task);
 
     localPlayer.tasks.push_back(character.tasks[taskId]);
@@ -576,10 +636,137 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     return true;
 }
 
+void EnsureObjectiveExists(const Character& character, int taskId) {
+    if (taskId < 0 || taskId >= static_cast<int>(character.tasks.size())) {
+        return;
+    }
+
+    for (const Task& existing : objectives) {
+        if (existing.room == character.room && existing.id == taskId) {
+            return;
+        }
+    }
+
+    Task task;
+    task.id = taskId;
+    task.name = character.tasks[taskId];
+    task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
+    task.room = character.room;
+    objectives.push_back(task);
+}
+
+std::string SerializeTaskProgress(const std::vector<Character>& chars) {
+    std::ostringstream out;
+    bool first = true;
+    for (const Character& c : chars) {
+        if (!first) {
+            out << ",";
+        }
+        out << c.room << ":" << c.tasksGiven << ":" << c.tasksCompleted;
+        first = false;
+    }
+    return out.str();
+}
+
+void RemoveCompletedObjectivesForRoom(int room, int completedCount) {
+    objectives.erase(
+        std::remove_if(
+            objectives.begin(),
+            objectives.end(),
+            [room, completedCount](const Task& task) {
+                return task.room == room && task.id < completedCount;
+            }
+        ),
+        objectives.end()
+    );
+}
+
+void ApplyRemoteTaskProgressState(const std::string& serializedState,
+                                  std::vector<Character>& chars,
+                                  const std::vector<Tile>& tiles,
+                                  std::vector<TreeProp>& trees,
+                                  std::vector<Door>& doors,
+                                  int& nextRoomId,
+                                  const std::vector<vec2>& hubDoorPositions) {
+    if (serializedState.empty()) {
+        return;
+    }
+
+    std::stringstream stream(serializedState);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        std::size_t separator = token.find(':');
+        if (separator == std::string::npos || separator == 0 || separator + 1 >= token.size()) {
+            continue;
+        }
+
+        std::size_t secondSeparator = token.find(':', separator + 1);
+
+        int roomId = 0;
+        int givenCount = 0;
+        int completedCount = 0;
+        try {
+            roomId = std::stoi(token.substr(0, separator));
+            if (secondSeparator != std::string::npos) {
+                givenCount = std::stoi(token.substr(separator + 1, secondSeparator - separator - 1));
+                completedCount = std::stoi(token.substr(secondSeparator + 1));
+            } else {
+                completedCount = std::stoi(token.substr(separator + 1));
+                givenCount = completedCount;
+            }
+        } catch (...) {
+            continue;
+        }
+
+        Character* character = getCharacterForRoom(chars, roomId);
+        if (character == nullptr) {
+            continue;
+        }
+
+        int maxTasks = static_cast<int>(character->tasks.size());
+        givenCount = std::max(0, std::min(givenCount, maxTasks));
+        completedCount = std::max(0, std::min(completedCount, maxTasks));
+        if (completedCount > givenCount) {
+            givenCount = completedCount;
+        }
+
+        bool changed = false;
+        if (givenCount > character->tasksGiven) {
+            character->tasksGiven = givenCount;
+            changed = true;
+        }
+
+        if (completedCount > character->tasksCompleted) {
+            character->tasksCompleted = completedCount;
+            changed = true;
+        }
+
+        if (!changed) {
+            continue;
+        }
+
+        character->tasksGiven = std::max(character->tasksGiven, character->tasksCompleted);
+        character->level = character->tasksCompleted * 30;
+
+        RemoveCompletedObjectivesForRoom(character->room, character->tasksCompleted);
+        for (int taskId = character->tasksCompleted; taskId < character->tasksGiven; ++taskId) {
+            EnsureObjectiveExists(*character, taskId);
+        }
+
+        if (character->tasksCompleted >= maxTasks && !character->isRoaming) {
+            character->isRoaming = true;
+            spawnTreeOnMarkerForRoom(tiles, trees, character->room);
+            spawnNextStage(chars, doors, nextRoomId, *character, hubDoorPositions);
+        }
+    }
+}
+
 
 int main()
 {
     srand((unsigned int)time(nullptr));
+
+    LoadTaskPositionOverrides(taskPositionOverridesPath);
 
     std::vector<Tile> tiles;
     tiles = genWorld(vec2(120,100));
@@ -681,6 +868,13 @@ int main()
     }
     houseCount = static_cast<int>(houseTextures.size());
 
+    houseTilesets = loadHouseTilesets();
+    houseTilesetStartId = houseStartId + houseCount;
+    houseTilesetCount = 0;
+    for (const HouseTilesetGroup& group : houseTilesets) {
+        houseTilesetCount += static_cast<int>(group.textures.size());
+    }
+
     auto getHubHouseDoorPositions = [&](const std::vector<Tile>& mapTiles) {
         std::vector<vec2> positions;
 
@@ -757,7 +951,41 @@ int main()
     multiplayer.setPlayerName(gLocalPlayerName);
     std::string requestedRoomCode = getEnvOrDefault("COMMUNITY_ROOM_CODE", "");
 
-    float menuScale = 1.0;
+    UI::Clear();
+    Menu& mainMenu = UI::CreateMenu("main-menu");
+
+    UiPanel& menuBackground = UI::AddPanel(
+        mainMenu,
+        "menu-background",
+        vec2(0.0f, 0.0f),
+        vec2(screen.x / zoom, screen.y / zoom),
+        vec4(0.94f, 0.97f, 0.92f, 1.0f)
+    );
+    menuBackground.dynamicDim = [&]() {
+        return vec2(screen.x / zoom, screen.y / zoom);
+    };
+
+    UiLabel& menuTitle = UI::AddLabel(mainMenu, "menu-title", "welcome to your community", vec2(0.0f, 180.0f), 42.0f / zoom, true);
+    menuTitle.dynamicPos = [&]() {
+        return vec2(0.0f, 180.0f + 5.0f * std::sin(timer * 0.08f));
+    };
+
+    UI::AddLabel(mainMenu, "menu-subtitle", "click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, true);
+    UI::AddLabel(mainMenu, "menu-footnote", "idiot", vec2(0.0f, -240.0f), 9.0f / zoom, true);
+
+    Button& playMenuButton = UI::AddButton(mainMenu, "play", "play", vec2(0.0f, -80.0f), vec2(140.0f, 70.0f), playButton);
+    playMenuButton.labelSize = 28.0f / zoom;
+    playMenuButton.labelSpacing = 1.3f;
+    playMenuButton.dynamicPos = [&]() {
+        return vec2(0.0f, -80.0f + 10.0f * std::sin(timer * 0.1f));
+    };
+    playMenuButton.onClick = [&]() {
+        inMainMenu = false;
+        if (!multiplayerStarted) {
+            multiplayer.initOrJoin(requestedRoomCode);
+            multiplayerStarted = true;
+        }
+    };
 
     auto frame = [&]() {
         if (glfwWindowShouldClose(window)) {
@@ -771,7 +999,7 @@ int main()
 
         glfwPollEvents();
 
-        glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glLoadIdentity();
@@ -779,37 +1007,17 @@ int main()
         timer += 0.01;
 
         if (inMainMenu) {
-            vec2 mouseUI = GetMouseUI(window);
-            vec2 playCenter = vec2(0.0f, -80.0f + 10.0*sin(timer * 0.1));
-            vec2 playHalfSize = vec2(220.0f, 70.0f);
-            bool hoveringPlay = BoxCollide(playCenter, playHalfSize, mouseUI, vec2(0.0f));
-
-            Image::DrawRect(vec2(0.0f, 0.0f), vec2(screen.x / zoom, screen.y / zoom), 0.94f, 0.97f, 0.92f);
-            if (hoveringPlay) {
-                menuScale += 0.05 * (1.2 - menuScale);
-            } else {
-                menuScale += 0.05 * (1.0 - menuScale);
-            }
-            
-            Image::Draw(playButton, playCenter, vec2(140.0, 70.0) * menuScale);
-
-            Text::DrawStringCentered("welcome to your community", vec2(0.0f, 180.0f), 42.0f / zoom, 1.35f);
-            Text::DrawStringCentered("play", playCenter, 28.0f * menuScale / zoom, 1.3f);
-            Text::DrawStringCentered("click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, 1.3f);
-            Text::DrawStringCentered("idiot", vec2(0.0f, -240.0f), 9.0f / zoom, 1.3f);
-
-            if (hoveringPlay && Mouse::IsPressed(0)) {
-                inMainMenu = false;
-                if (!multiplayerStarted) {
-                    multiplayer.initOrJoin(requestedRoomCode);
-                    multiplayerStarted = true;
-                }
-            }
+            mainMenu.visible = true;
+            mainMenu.enabled = true;
+            UI::Draw();
 
             Manager::Update();
             glfwSwapBuffers(window);
             return;
         }
+
+        mainMenu.visible = false;
+        mainMenu.enabled = false;
 
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 
@@ -860,6 +1068,30 @@ int main()
             return true;
         };
 
+        auto drawHouseTilesetTile = [&](int tileId, const vec2& pos) {
+            if (tileId < houseTilesetStartId || tileId >= houseTilesetStartId + houseTilesetCount) {
+                return false;
+            }
+
+            int localIndex = tileId - houseTilesetStartId;
+            for (const HouseTilesetGroup& group : houseTilesets) {
+                int groupCount = static_cast<int>(group.textures.size());
+                if (groupCount <= 0) {
+                    continue;
+                }
+
+                if (localIndex >= group.start && localIndex < group.start + groupCount) {
+                    int groupIndex = localIndex - group.start;
+                    if (groupIndex >= 0 && groupIndex < static_cast<int>(group.textures.size()) && group.textures[groupIndex] != 0) {
+                        Image::Draw(group.textures[groupIndex], pos, 32);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        };
+
         vec2 mouse = GetMouseWorld(window);
         int i = 0;
         selected = -1;
@@ -891,6 +1123,8 @@ int main()
                         drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, t.id - tilesetStartId, t.pos);
                     } else if (platformTexture != 0 && t.id >= platformStartId && t.id < platformStartId + platformCount && platformCols > 0 && platformRows > 0) {
                         drawFromSheet(platformTexture, platformWidth, platformHeight, platformCols, platformTilePixels, t.id - platformStartId, t.pos);
+                    } else if (drawHouseTilesetTile(t.id, t.pos)) {
+                        // rendered from the new house tileset library
                     }
 
                     if (BoxCollide(mouse, vec2(0.0), drawPos, drawHalf)) {
@@ -925,6 +1159,8 @@ int main()
             if(Input::IsPressed("0")) {
                 mode = 1 - mode;
             }
+
+            HouseTilesetGroup* activeHouseTilesetGroup = nullptr;
 
             if (mode) {
                 camera.controls();
@@ -968,6 +1204,35 @@ int main()
                     editorTileSource = (editorTileSource == 5) ? 0 : 5;
                 }
 
+                if (Input::IsPressed("8")) {
+                    editorTileSource = (editorTileSource == 6) ? 0 : 6;
+                }
+
+                if (Input::IsPressed("t")) {
+                    editorTaskPlacementMode = !editorTaskPlacementMode;
+                    if (!editorTaskPlacementMode) {
+                        editorDraggedObjectiveIndex = -1;
+                    }
+                }
+
+                if (editorTileSource == 6 && !houseTilesets.empty()) {
+                    if (Input::IsPressed("9")) {
+                        houseTilesetGroup += 1;
+                        if (houseTilesetGroup >= static_cast<int>(houseTilesets.size())) {
+                            houseTilesetGroup = 0;
+                        }
+                        houseTilesetTile = 0;
+                    }
+
+                    if (houseTilesetGroup < 0) {
+                        houseTilesetGroup = 0;
+                    } else if (houseTilesetGroup >= static_cast<int>(houseTilesets.size())) {
+                        houseTilesetGroup = static_cast<int>(houseTilesets.size()) - 1;
+                    }
+
+                    activeHouseTilesetGroup = &houseTilesets[houseTilesetGroup];
+                }
+
                 Tile t;
                 t.pos = snap(mouse + 32, 64.0);
                 t.room = player.room;
@@ -995,6 +1260,8 @@ int main()
                     platformTile += tileDelta;
                 } else if (editorTileSource == 3 && houseCount > 0) {
                     houseTile += tileDelta;
+                } else if (editorTileSource == 6 && activeHouseTilesetGroup != nullptr && !activeHouseTilesetGroup->textures.empty()) {
+                    houseTilesetTile += tileDelta;
                 } else {
                     tile += tileDelta;
                 }
@@ -1039,12 +1306,24 @@ int main()
                     houseTile = 0;
                 }
 
+                if (activeHouseTilesetGroup != nullptr && !activeHouseTilesetGroup->textures.empty()) {
+                    if (houseTilesetTile < 0) {
+                        houseTilesetTile = static_cast<int>(activeHouseTilesetGroup->textures.size()) - 1;
+                    } else if (houseTilesetTile >= static_cast<int>(activeHouseTilesetGroup->textures.size())) {
+                        houseTilesetTile = 0;
+                    }
+                } else {
+                    houseTilesetTile = 0;
+                }
+
                 if (editorTileSource == 1 && tilesetCount > 0) {
                     t.id = tilesetStartId + tilesetTile;
                 } else if (editorTileSource == 2 && platformCount > 0) {
                     t.id = platformStartId + platformTile;
                 } else if (editorTileSource == 3 && houseCount > 0) {
                     t.id = houseStartId + houseTile;
+                } else if (editorTileSource == 6 && activeHouseTilesetGroup != nullptr && !activeHouseTilesetGroup->textures.empty()) {
+                    t.id = houseTilesetStartId + activeHouseTilesetGroup->start + houseTilesetTile;
                 } else if (editorTileSource == 4) {
                     t.id = treeSpawnMarkerTileId;
                 } else if (editorTileSource == 5) {
@@ -1053,44 +1332,90 @@ int main()
                     t.id = tile;
                 }
 
-                if (selectMode == 0 && tileCount > 0) {
-                    if (editorTileSource == 4) {
-                        drawTreeSpawnMarkerTile(t.pos);
-                    } else if (editorTileSource == 5) {
-                        drawCollisionMarkerTile(t.pos);
-                    } else if (editorTileSource == 1 && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
-                        drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, tilesetTile, t.pos);
-                    } else if (editorTileSource == 2 && platformCount > 0 && platformTexture != 0 && platformCols > 0 && platformRows > 0) {
-                        drawFromSheet(platformTexture, platformWidth, platformHeight, platformCols, platformTilePixels, platformTile, t.pos);
-                    } else if (editorTileSource == 3 && houseCount > 0) {
-                        drawHousePrefab(t, true, nullptr, nullptr);
+                if (editorTaskPlacementMode) {
+                    int hoveredObjective = -1;
+                    for (int objectiveIndex = 0; objectiveIndex < static_cast<int>(objectives.size()); ++objectiveIndex) {
+                        const Task& objective = objectives[objectiveIndex];
+                        if (objective.room != player.room) {
+                            continue;
+                        }
+
+                        if (BoxCollide(mouse, vec2(0.0f), objective.pos, objective.dim)) {
+                            hoveredObjective = objectiveIndex;
+                            break;
+                        }
+                    }
+
+                    vec2 snappedTaskPos = snap(mouse + 32.0f, 64.0f);
+                    Image::Draw(selectTex, snappedTaskPos, 32);
+
+                    if (Mouse::IsPressed(0) && hoveredObjective != -1) {
+                        editorDraggedObjectiveIndex = hoveredObjective;
+                    }
+
+                    if (editorDraggedObjectiveIndex >= 0 && editorDraggedObjectiveIndex < static_cast<int>(objectives.size())) {
+                        Task& draggedObjective = objectives[editorDraggedObjectiveIndex];
+
+                        if (draggedObjective.room == player.room && Mouse::IsDown(0)) {
+                            draggedObjective.pos = snappedTaskPos;
+                        }
+
+                        Image::DrawRect(draggedObjective.pos, draggedObjective.dim, 0.2f, 0.9f, 0.2f, 1.0f, 0.0f);
+
+                        if (Mouse::IsReleased(0)) {
+                            UpdateTaskPositionOverride(draggedObjective);
+                            SaveTaskPositionOverrides(taskPositionOverridesPath);
+                            editorDraggedObjectiveIndex = -1;
+                        }
                     } else {
-                        Image::Draw(tileTextures[tile], t.pos, 32);
+                        editorDraggedObjectiveIndex = -1;
+                    }
+
+                    if (hoveredObjective != -1) {
+                        Image::DrawRect(objectives[hoveredObjective].pos, objectives[hoveredObjective].dim, 0.2f, 0.7f, 1.0f, 1.0f, 0.0f);
                     }
                 } else {
-                    Image::Draw(deleteTex, t.pos, 32);
-                }
-                    
-                if (Mouse::IsPressed(0)) {
-                    if (selectMode == 0) {
-                        tiles.push_back(t);
-                    } else {
-                        if (selected != -1) {
-                            tiles.erase(tiles.begin() + selected);
+                    if (selectMode == 0 && tileCount > 0) {
+                        if (editorTileSource == 4) {
+                            drawTreeSpawnMarkerTile(t.pos);
+                        } else if (editorTileSource == 5) {
+                            drawCollisionMarkerTile(t.pos);
+                        } else if (editorTileSource == 1 && tilesetCount > 0 && tilesetTexture != 0 && tilesetCols > 0 && tilesetRows > 0) {
+                            drawFromSheet(tilesetTexture, tilesetWidth, tilesetHeight, tilesetCols, tilesetTilePixels, tilesetTile, t.pos);
+                        } else if (editorTileSource == 2 && platformCount > 0 && platformTexture != 0 && platformCols > 0 && platformRows > 0) {
+                            drawFromSheet(platformTexture, platformWidth, platformHeight, platformCols, platformTilePixels, platformTile, t.pos);
+                        } else if (editorTileSource == 3 && houseCount > 0) {
+                            drawHousePrefab(t, true, nullptr, nullptr);
+                        } else if (editorTileSource == 6 && activeHouseTilesetGroup != nullptr && !activeHouseTilesetGroup->textures.empty()) {
+                            Image::Draw(activeHouseTilesetGroup->textures[houseTilesetTile], t.pos, 32);
+                        } else {
+                            Image::Draw(tileTextures[tile], t.pos, 32);
                         }
+                    } else {
+                        Image::Draw(deleteTex, t.pos, 32);
                     }
 
-                    save(tiles, "game/data/map.dat");
-                } else if (Mouse::IsDown(1)) {
-                    if (selectMode == 0) {
-                        tiles.push_back(t);
-                    } else {
-                        if (selected != -1) {
-                            tiles.erase(tiles.begin() + selected);
+                    if (Mouse::IsPressed(0)) {
+                        if (selectMode == 0) {
+                            tiles.push_back(t);
+                        } else {
+                            if (selected != -1) {
+                                tiles.erase(tiles.begin() + selected);
+                            }
                         }
-                    }
 
-                    save(tiles, "game/data/map.dat");
+                        save(tiles, "game/data/map.dat");
+                    } else if (Mouse::IsDown(1)) {
+                        if (selectMode == 0) {
+                            tiles.push_back(t);
+                        } else {
+                            if (selected != -1) {
+                                tiles.erase(tiles.begin() + selected);
+                            }
+                        }
+
+                        save(tiles, "game/data/map.dat");
+                    }
                 }
 
             } else {
@@ -1186,7 +1511,9 @@ int main()
                 Minigames::OpenTask(id, t.name, t.room);
             }
             ++id;
-            Image::Draw(taskTex, t.pos, 45.0);
+            if (editorTaskPlacementMode) {
+                Image::Draw(taskTex, t.pos, 45.0);
+            }
         }
 
         int pendingDropoffRoom = -1;
@@ -1242,10 +1569,24 @@ int main()
         Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
+            HouseTilesetGroup* activeHouseTilesetGroup = nullptr;
+            if (editorTileSource == 6 && !houseTilesets.empty()) {
+                if (houseTilesetGroup < 0) {
+                    houseTilesetGroup = 0;
+                } else if (houseTilesetGroup >= static_cast<int>(houseTilesets.size())) {
+                    houseTilesetGroup = static_cast<int>(houseTilesets.size()) - 1;
+                }
+
+                if (houseTilesetGroup >= 0 && houseTilesetGroup < static_cast<int>(houseTilesets.size())) {
+                    activeHouseTilesetGroup = &houseTilesets[houseTilesetGroup];
+                }
+            }
+
             std::string activeTilesetName = "library";
             std::string activeToggleKey = "default";
             std::string tilesetRowText;
             vec2 hintsHeaderPos = vec2(-screen.x + 40, screen.y - 370) / zoom;
+            std::string taskEditorModeText = std::string("task editor: ") + (editorTaskPlacementMode ? "on" : "off") + " (toggle t)";
 
             if (Input::IsPressed("enter")) {
                 editorHintsOpen = !editorHintsOpen;
@@ -1260,6 +1601,9 @@ int main()
             } else if (editorTileSource == 3 && houseCount > 0) {
                 activeTilesetName = "houses";
                 activeToggleKey = "5";
+            } else if (editorTileSource == 6 && !houseTilesets.empty() && activeHouseTilesetGroup != nullptr) {
+                activeTilesetName = "house/" + activeHouseTilesetGroup->name;
+                activeToggleKey = "8";
             } else if (editorTileSource == 4) {
                 activeTilesetName = "spawn marker";
                 activeToggleKey = "6";
@@ -1270,6 +1614,14 @@ int main()
 
             tilesetRowText = "tileset: " + activeTilesetName + " (toggle " + activeToggleKey + ")";
             Text::DrawString(tilesetRowText, vec2(-screen.x + 40, screen.y - 280) / zoom, 18.0f / zoom, 1.5f);
+            Text::DrawString(taskEditorModeText, vec2(-screen.x + 40, screen.y - 310) / zoom, 16.0f / zoom, 1.5f);
+
+            if (editorTileSource == 6 && activeHouseTilesetGroup != nullptr && !activeHouseTilesetGroup->textures.empty()) {
+                const std::string& activeHouseTileFile = activeHouseTilesetGroup->files[houseTilesetTile];
+                std::string houseTileRowText = "house tile: " + std::to_string(houseTilesetTile + 1) + "/" + std::to_string(activeHouseTilesetGroup->textures.size()) + " " + getFileBaseName(activeHouseTileFile);
+                Text::DrawString(houseTileRowText, vec2(-screen.x + 40, screen.y - 340) / zoom, 16.0f / zoom, 1.5f);
+                Text::DrawString("9: next house folder", vec2(-screen.x + 40, screen.y - 370) / zoom, 14.0f / zoom, 1.5f);
+            }
 
             std::string hintsHeaderText = std::string(editorHintsOpen ? "[-] " : "[+] ") + "press enter for text editor hints";
             Text::DrawString(hintsHeaderText, hintsHeaderPos, 16.0f / zoom, 1.5f);
@@ -1283,9 +1635,13 @@ int main()
                 Text::DrawString("5: houses", vec2(-screen.x + 40, screen.y - 550) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("6: spawn marker", vec2(-screen.x + 40, screen.y - 580) / zoom, 14.0f / zoom, 1.5f);
                 Text::DrawString("7: collision marker", vec2(-screen.x + 40, screen.y - 610) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("x/z or wheel: select tile", vec2(-screen.x + 40, screen.y - 640) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("left click: place/remove", vec2(-screen.x + 40, screen.y - 670) / zoom, 14.0f / zoom, 1.5f);
-                Text::DrawString("q/e: prev/next room", vec2(-screen.x + 40, screen.y - 700) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("8: house tilesets", vec2(-screen.x + 40, screen.y - 640) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("9: next house folder", vec2(-screen.x + 40, screen.y - 670) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("t: toggle task placement editor", vec2(-screen.x + 40, screen.y - 700) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("task mode: click objective to move + save", vec2(-screen.x + 40, screen.y - 730) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("x/z or wheel: select tile", vec2(-screen.x + 40, screen.y - 760) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("left click: place/remove", vec2(-screen.x + 40, screen.y - 790) / zoom, 14.0f / zoom, 1.5f);
+                Text::DrawString("q/e: prev/next room", vec2(-screen.x + 40, screen.y - 820) / zoom, 14.0f / zoom, 1.5f);
             }
         }
 
