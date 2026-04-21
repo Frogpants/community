@@ -96,7 +96,7 @@
     <canvas id="canvas" tabindex="-1"></canvas>
     <div id="status">loading...</div>
     <div id="task-panel">
-      <h3>Task Completions</h3>
+      <h3>Task Tracker</h3>
       <div id="task-backend-url" class="backend-url"></div>
       <ul id="task-list"></ul>
       <div id="task-error" class="error"></div>
@@ -108,7 +108,7 @@
     var taskListEl = document.getElementById("task-list");
     var taskBackendEl = document.getElementById("task-backend-url");
     var taskErrorEl = document.getElementById("task-error");
-    var backendBaseUrl = (window.COMMUNITY_BACKEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    var backendBaseUrl = (window.COMMUNITY_BACKEND_URL || "http://localhost:8080").replace(/\/$/, "");
 
     taskBackendEl.textContent = "backend: " + backendBaseUrl;
 
@@ -131,25 +131,23 @@
 
       if (!Array.isArray(tasks) || tasks.length === 0) {
         var emptyEl = document.createElement("li");
-        emptyEl.textContent = "No completed tasks yet.";
+        emptyEl.textContent = "No tasks yet.";
         taskListEl.appendChild(emptyEl);
         return;
       }
 
       tasks.forEach(function(task) {
         var normalized = normalizeTask(task);
-        if (!normalized.completed) {
-          return;
-        }
         var item = document.createElement("li");
+        var status = normalized.completed ? "completed" : "in progress";
         var timestamp = normalized.updatedAt ? (" · " + normalized.updatedAt) : "";
-        item.textContent = normalized.userName + " completed \"" + normalized.taskName + "\" in room " + normalized.room + timestamp;
+        item.textContent = normalized.userName + " · room " + normalized.room + " · " + normalized.taskName + " · " + status + timestamp;
         taskListEl.appendChild(item);
       });
 
       if (taskListEl.children.length === 0) {
         var noCompletions = document.createElement("li");
-        noCompletions.textContent = "No completed tasks yet.";
+        noCompletions.textContent = "No tasks yet.";
         taskListEl.appendChild(noCompletions);
       }
     }
@@ -174,6 +172,27 @@
       }
     }
 
+    async function saveTask(userName, taskName, room, taskId, completed) {
+      try {
+        setTaskError("");
+        await backendRequest("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userName: userName,
+            taskName: taskName,
+            room: room,
+            taskId: taskId,
+            completed: Boolean(completed)
+          })
+        });
+      } catch (error) {
+        setTaskError("Could not save task to backend.\n" + String(error));
+      }
+
+      await refreshTasks();
+    }
+
     async function completeTask(userName, taskName, room, taskId) {
       try {
         setTaskError("");
@@ -196,6 +215,7 @@
     }
 
     window.CommunityTaskUI = {
+      saveTask: saveTask,
       completeTask: completeTask,
       refreshTasks: refreshTasks
     };

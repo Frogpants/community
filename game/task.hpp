@@ -13,6 +13,7 @@ struct Task {
     int room = 0;
 
     std::string name;
+    std::string assignedBy;
 };
 
 inline vec2 GetTaskSpawnPosition(const std::string& taskName, int taskIndex) {

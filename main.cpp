@@ -48,6 +48,7 @@ public:
 #include "core/collision.hpp"
 #include "core/images/image.hpp"
 #include "core/images/stb_image.h"
+#include "core/net/http.hpp"
 #include "core/text.hpp"
 #include "core/file.hpp"
 
@@ -56,9 +57,21 @@ public:
 
 static std::function<void()>* gWebFrame = nullptr;
 
-EM_JS(void, WebFrontendTaskCompleted, (const char* userName, const char* taskName, int room, int taskId), {
+EM_JS(void, WebFrontendTaskSaved, (const char* characterName, const char* taskName, int room, int taskId, int completed), {
+    if (window.CommunityTaskUI && typeof window.CommunityTaskUI.saveTask === "function") {
+        window.CommunityTaskUI.saveTask(
+            UTF8ToString(characterName),
+            UTF8ToString(taskName),
+            room,
+            taskId,
+            completed !== 0
+        );
+    }
+});
+
+EM_JS(void, WebFrontendTaskCompleted, (const char* characterName, const char* taskName, int room, int taskId), {
     if (window.CommunityTaskUI && typeof window.CommunityTaskUI.completeTask === "function") {
-        window.CommunityTaskUI.completeTask(UTF8ToString(userName), UTF8ToString(taskName), room, taskId);
+        window.CommunityTaskUI.completeTask(UTF8ToString(characterName), UTF8ToString(taskName), room, taskId);
     }
 });
 
@@ -68,7 +81,8 @@ static void WebFrameTrampoline() {
     }
 }
 #else
-static void WebFrontendTaskCompleted(const char*, const char*, int, int) {}
+static void WebFrontendTaskSaved(const char* characterName, const char* taskName, int room, int taskId, int completed);
+static void WebFrontendTaskCompleted(const char* characterName, const char* taskName, int room, int taskId);
 #endif
 
 
@@ -191,6 +205,83 @@ int getEnvIntOrDefault(const char* key, int fallback) {
         return fallback;
     }
 }
+
+#ifndef __EMSCRIPTEN__
+namespace {
+std::string EscapeJson(const std::string& raw) {
+    std::string escaped;
+    escaped.reserve(raw.size());
+
+    for (char c : raw) {
+        if (c == '"' || c == '\\') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(c);
+    }
+
+    return escaped;
+}
+
+Http::Response PostTaskJson(const std::string& path, const std::string& jsonBody) {
+    std::string host = getEnvOrDefault("COMMUNITY_BACKEND_HOST", server);
+    int port = getEnvIntOrDefault("COMMUNITY_BACKEND_PORT", 8080);
+
+    std::vector<std::string> hosts;
+    hosts.push_back(host);
+    if (host == "localhost") {
+        hosts.push_back("127.0.0.1");
+    } else if (host == "127.0.0.1") {
+        hosts.push_back("localhost");
+    }
+
+    Http::Response response;
+    for (const std::string& candidateHost : hosts) {
+        response = Http::PostJson(candidateHost, port, path, jsonBody);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+            return response;
+        }
+    }
+
+    return response;
+}
+
+void SyncTaskToBackend(const std::string& characterName, const std::string& taskName, int room, int taskId, bool completed) {
+    std::ostringstream body;
+    body << "{\"userName\":\"" << EscapeJson(characterName)
+         << "\",\"taskName\":\"" << EscapeJson(taskName)
+         << "\",\"room\":" << room
+         << ",\"taskId\":" << taskId
+         << ",\"completed\":" << (completed ? "true" : "false") << "}";
+
+    const std::string path = completed ? "/api/tasks/complete" : "/api/tasks";
+    Http::Response response = PostTaskJson(path, body.str());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+        std::cout << "Task sync failed (" << response.statusCode << ") for "
+                  << taskName << " in room " << room << std::endl;
+    }
+}
+} // namespace
+
+static void WebFrontendTaskSaved(const char* characterName, const char* taskName, int room, int taskId, int completed) {
+    SyncTaskToBackend(
+        characterName == nullptr ? "" : std::string(characterName),
+        taskName == nullptr ? "" : std::string(taskName),
+        room,
+        taskId,
+        completed != 0
+    );
+}
+
+static void WebFrontendTaskCompleted(const char* characterName, const char* taskName, int room, int taskId) {
+    SyncTaskToBackend(
+        characterName == nullptr ? "" : std::string(characterName),
+        taskName == nullptr ? "" : std::string(taskName),
+        room,
+        taskId,
+        true
+    );
+}
+#endif
 
 std::string getRandomUsername() {
     const std::vector<std::string> adjectives = {
@@ -472,12 +563,14 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
     Task task;
     task.id = taskId;
     task.name = character.tasks[taskId];
+    task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
     objectives.push_back(task);
 
     localPlayer.tasks.push_back(character.tasks[taskId]);
     character.tasksGiven += 1;
+    WebFrontendTaskSaved(task.assignedBy.c_str(), task.name.c_str(), task.room, task.id, 0);
     return true;
 }
 
@@ -1243,7 +1336,15 @@ int main()
                     }
                 }
 
-                WebFrontendTaskCompleted(gLocalPlayerName.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);
+                std::string completedBy = completedTask.assignedBy;
+                if (completedBy.empty() && completedCharacter != nullptr) {
+                    completedBy = completedCharacter->name;
+                }
+                if (completedBy.empty()) {
+                    completedBy = gLocalPlayerName;
+                }
+
+                WebFrontendTaskCompleted(completedBy.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);
             }
 
             Minigames::CloseTask();
