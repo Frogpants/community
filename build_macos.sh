@@ -46,7 +46,7 @@ echo "Compiling..."
 # Ensure runtime linker searches next to executable
 RPATH_FLAG="-Wl,-rpath,@executable_path"
 
-clang++ -std=c++17 -O2 $SRC $FLAGS $RPATH_FLAG \
+clang++ -std=c++17 -O2 -I. $SRC $FLAGS $RPATH_FLAG \
     -o "$DIST_DIR/$EXE_NAME"
 
 echo "Copying assets..."

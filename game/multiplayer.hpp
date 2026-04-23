@@ -481,9 +481,11 @@ private:
 
     void pollPresence(const std::string& localRoomCode, double nowSeconds) {
         std::string localName;
+        int localGameplayRoom = 0;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
             localName = playerName;
+            localGameplayRoom = latestLocalRoom;
         }
 
         Http::Response response = tryGet(
@@ -543,6 +545,13 @@ private:
             bool hasGameplayRoom = extractJsonNumber(objectJson, "room", gameplayRoom);
             if (!id.empty() && !name.empty() && extractJsonNumber(objectJson, "x", x) && extractJsonNumber(objectJson, "y", y)) {
                 if (name != localName) {
+                    if (hasGameplayRoom && static_cast<int>(gameplayRoom) != localGameplayRoom) {
+                        std::lock_guard<std::mutex> lock(stateMutex);
+                        remotes.erase(id);
+                        pos = objEnd;
+                        continue;
+                    }
+
                     std::lock_guard<std::mutex> lock(stateMutex);
                     RemotePlayer& remote = remotes[id];
                     remote.playerId = id;
@@ -582,7 +591,13 @@ private:
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
-        statusText = "room " + localRoomCode + " players " + std::to_string(static_cast<int>(remotes.size()) + 1);
+        int visibleRemoteCount = 0;
+        for (const auto& entry : remotes) {
+            if (entry.second.room == latestLocalRoom) {
+                visibleRemoteCount += 1;
+            }
+        }
+        statusText = "room " + localRoomCode + " players " + std::to_string(visibleRemoteCount + 1);
     }
 
     void workerLoop() {

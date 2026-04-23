@@ -73,6 +73,7 @@ SRC=$(find . -name "*.cpp" \
 
 em++ $SRC \
     -std=c++17 \
+    -I. \
     -O2 \
     -sUSE_GLFW=3 \
     -sLEGACY_GL_EMULATION=1 \

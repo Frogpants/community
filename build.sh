@@ -18,19 +18,16 @@ mkdir -p "$DIST_DIR"
 
 echo "Compiling..."
 
-# Collect all source files
-SRC="main.cpp"
-
-for dir in core/*; do
-    if [ -d "$dir" ]; then
-        for file in "$dir"/*.cpp; do
-            [ -f "$file" ] && SRC="$SRC $file"
-        done
-    fi
-done
+# Collect all source files recursively
+SRC=$(find . -name "*.cpp" \
+    -not -path "./.emsdk/*" \
+    -not -path "./glfw/*" \
+    -not -path "./dist/*" \
+    -not -path "./dist_web/*" | tr '\n' ' ')
 
 # Compile with MinGW-w64
 x86_64-w64-mingw32-g++ $SRC \
+    -I. \
     -Iglfw/include \
     -Lglfw/build/src \
     -lglfw3 \
