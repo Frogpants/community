@@ -1667,7 +1667,7 @@ int main()
         int pendingDropoffRoom = -1;
         std::string pendingDropoffTaskName;
         if (Minigames::ConsumeTakeOutTrashDropoffPlacementRequest(pendingDropoffRoom, pendingDropoffTaskName)) {
-            const vec2 trashCanForwardOffset = vec2(0.0f, -96.0f);
+            const vec2 trashCanForwardOffset = vec2(0.0f, -182.0f);
             vec2 outsideTrashcanPos = vec2(220.0f, -250.0f);
             for (const Door& door : doors) {
                 if (door.roomId == pendingDropoffRoom) {
