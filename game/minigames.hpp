@@ -88,10 +88,10 @@ namespace Minigames {
     struct PendingTrashDropoff {
         std::string taskName;
         int taskRoom = -1;
+        int taskId = -1;
         vec2 worldPos = vec2(0.0f);
         bool hasWorldPos = false;
         bool active = true;
-        bool readyForInteract = false;
     };
 
     struct LaundryState {
@@ -107,9 +107,11 @@ namespace Minigames {
     inline bool taskCompleteRequested = false;
     inline int activeTaskIndex = -1;
     inline int activeTaskRoom = -1;
+    inline int activeTaskId = -1;
     inline std::string activeTaskName;
     inline int completionTaskIndex = -1;
     inline int completionTaskRoom = -1;
+    inline int completionTaskId = -1;
     inline std::string completionTaskName;
     inline WashDishesState washDishes;
     inline TakeOutTrashState takeOutTrash;
@@ -686,6 +688,8 @@ namespace Minigames {
 
             if (!washDishes.completionSent) {
                 completionTaskIndex = activeTaskIndex;
+                completionTaskRoom = activeTaskRoom;
+                completionTaskId = activeTaskId;
                 completionTaskName = activeTaskName;
                 taskCompleteRequested = true;
                 washDishes.completionSent = true;
@@ -795,10 +799,13 @@ namespace Minigames {
                 goOutside.fallbackColor = vec4(0.29f, 0.52f, 0.28f, 1.0f);
                 goOutside.fallbackHoverColor = vec4(0.22f, 0.60f, 0.28f, 1.0f);
                 goOutside.fallbackPressedColor = vec4(0.18f, 0.44f, 0.22f, 1.0f);
-                goOutside.onClick = []() {
+                const int taskRoomForDropoff = activeTaskRoom;
+                const int taskIdForDropoff = activeTaskId;
+                const std::string taskNameForDropoff = activeTaskName;
+                goOutside.onClick = [taskRoomForDropoff, taskIdForDropoff, taskNameForDropoff]() {
                     bool alreadyPending = false;
                     for (const PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
-                        if (dropoff.active && dropoff.taskRoom == activeTaskRoom && dropoff.taskName == activeTaskName) {
+                        if (dropoff.active && dropoff.taskRoom == taskRoomForDropoff && dropoff.taskName == taskNameForDropoff) {
                             alreadyPending = true;
                             break;
                         }
@@ -806,17 +813,19 @@ namespace Minigames {
 
                     if (!alreadyPending) {
                         PendingTrashDropoff dropoff;
-                        dropoff.taskName = activeTaskName;
-                        dropoff.taskRoom = activeTaskRoom;
+                        dropoff.taskName = taskNameForDropoff;
+                        dropoff.taskRoom = taskRoomForDropoff;
+                        dropoff.taskId = taskIdForDropoff;
                         pendingTrashDropoffs.push_back(dropoff);
                     }
 
                     takeOutTrashDropoffPlacementRequested = true;
-                    takeOutTrashDropoffRequestedRoom = activeTaskRoom;
-                    takeOutTrashDropoffRequestedTaskName = activeTaskName;
+                    takeOutTrashDropoffRequestedRoom = taskRoomForDropoff;
+                    takeOutTrashDropoffRequestedTaskName = taskNameForDropoff;
                     taskOpen = false;
                     activeTaskIndex = -1;
                     activeTaskRoom = -1;
+                    activeTaskId = -1;
                     activeTaskName.clear();
                 };
             }
@@ -915,28 +924,13 @@ namespace Minigames {
         }
     }
 
-    inline void TryTakeOutTrashOutsideDropoff(vec2 playerPos, vec2 playerDim, int playerRoom, bool interactPressed) {
+    inline bool TryTakeOutTrashOutsideDropoff(vec2 playerPos, vec2 playerDim, int playerRoom, bool interactPressed) {
         if (playerRoom != 0) {
-            for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
-                if (dropoff.active) {
-                    dropoff.readyForInteract = false;
-                }
-            }
-            return;
-        }
-
-        for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
-            if (!dropoff.active) {
-                continue;
-            }
-
-            if (!interactPressed) {
-                dropoff.readyForInteract = true;
-            }
+            return false;
         }
 
         if (!interactPressed) {
-            return;
+            return false;
         }
 
         for (PendingTrashDropoff& dropoff : pendingTrashDropoffs) {
@@ -944,22 +938,24 @@ namespace Minigames {
                 continue;
             }
 
-            if (!dropoff.readyForInteract) {
-                continue;
-            }
-
-            if (!BoxCollide(playerPos, playerDim, dropoff.worldPos, vec2(64.0f, 82.0f))) {
+            if (!BoxCollide(playerPos, playerDim, dropoff.worldPos, vec2(92.0f, 110.0f))) {
                 continue;
             }
 
             dropoff.active = false;
             completionTaskIndex = -1;
             completionTaskRoom = dropoff.taskRoom;
+            completionTaskId = dropoff.taskId;
             completionTaskName = dropoff.taskName;
             taskCompleteRequested = true;
-            taskOpen = true;
-            break;
+            taskOpen = false;
+            std::cout << "Take out trash dropoff complete: room=" << completionTaskRoom
+                      << " id=" << completionTaskId
+                      << " task=\"" << completionTaskName << "\"" << std::endl;
+            return true;
         }
+
+        return false;
     }
 
     inline bool ConsumeTakeOutTrashDropoffPlacementRequest(int& taskRoom, std::string& taskName) {
@@ -984,17 +980,17 @@ namespace Minigames {
             if (dropoff.taskRoom == taskRoom && dropoff.taskName == taskName && !dropoff.hasWorldPos) {
                 dropoff.worldPos = worldPos;
                 dropoff.hasWorldPos = true;
-                dropoff.readyForInteract = false;
                 return;
             }
         }
     }
 
-    inline void OpenTask(int taskIndex, const std::string& taskName, int taskRoom) {
+    inline void OpenTask(int taskIndex, const std::string& taskName, int taskRoom, int taskId = -1) {
         taskOpen = true;
         taskCompleteRequested = false;
         activeTaskIndex = taskIndex;
         activeTaskRoom = taskRoom;
+        activeTaskId = taskId;
         activeTaskName = taskName;
 
         if (IsWashDishesTask()) {
@@ -1015,6 +1011,7 @@ namespace Minigames {
         taskCompleteRequested = false;
         activeTaskIndex = -1;
         activeTaskRoom = -1;
+        activeTaskId = -1;
         taskPopupCloseRequested = false;
         taskPopupUiInitialized = false;
         taskPopupControlsMenu = nullptr;
@@ -1056,6 +1053,7 @@ namespace Minigames {
         if (taskOpen) {
             completionTaskIndex = activeTaskIndex;
             completionTaskRoom = activeTaskRoom;
+            completionTaskId = activeTaskId;
             completionTaskName = activeTaskName;
             taskCompleteRequested = true;
         }
@@ -1076,6 +1074,10 @@ namespace Minigames {
 
     inline int GetCompletionTaskRoom() {
         return completionTaskRoom;
+    }
+
+    inline int GetCompletionTaskId() {
+        return completionTaskId;
     }
 
     inline const std::string& GetCompletionTaskName() {

@@ -1584,34 +1584,43 @@ int main()
                     }
                 }
 
-                for (const Door& door : doors) {
-                    vec2 doorPos = vec2(-999999.0f);
-                    if (player.room == 0) {
-                        doorPos = door.hubPos;
-                    } else if (player.room == door.roomId) {
-                        doorPos = door.roomPos;
-                    }
+                bool completedTrashDropoffThisFrame = Minigames::TryTakeOutTrashOutsideDropoff(
+                    player.pos,
+                    player.dim,
+                    player.room,
+                    Input::IsPressed("e")
+                );
 
-                    if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
-                        if (Input::IsPressed("e")) {
-                            if (player.room == 0) {
-                                roomReturnPositions[door.roomId] = player.pos;
-                                player.room = door.roomId;
-                                player.pos = door.roomPos;
-                                camera.pos = player.pos;
-                                camera.target = player.pos;
-                            } else {
-                                player.room = 0;
-                                auto returnPos = roomReturnPositions.find(door.roomId);
-                                if (returnPos != roomReturnPositions.end()) {
-                                    player.pos = returnPos->second;
+                if (!completedTrashDropoffThisFrame) {
+                    for (const Door& door : doors) {
+                        vec2 doorPos = vec2(-999999.0f);
+                        if (player.room == 0) {
+                            doorPos = door.hubPos;
+                        } else if (player.room == door.roomId) {
+                            doorPos = door.roomPos;
+                        }
+
+                        if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
+                            if (Input::IsPressed("e")) {
+                                if (player.room == 0) {
+                                    roomReturnPositions[door.roomId] = player.pos;
+                                    player.room = door.roomId;
+                                    player.pos = door.roomPos;
+                                    camera.pos = player.pos;
+                                    camera.target = player.pos;
                                 } else {
-                                    player.pos = door.hubPos;
+                                    player.room = 0;
+                                    auto returnPos = roomReturnPositions.find(door.roomId);
+                                    if (returnPos != roomReturnPositions.end()) {
+                                        player.pos = returnPos->second;
+                                    } else {
+                                        player.pos = door.hubPos;
+                                    }
+                                    camera.pos = player.pos;
+                                    camera.target = player.pos;
                                 }
-                                camera.pos = player.pos;
-                                camera.target = player.pos;
+                                break;
                             }
-                            break;
                         }
                     }
                 }
@@ -1624,8 +1633,6 @@ int main()
                         currentCharacter->roamTimer = 0.0f;
                     }
                 }
-
-                Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }
@@ -1649,7 +1656,7 @@ int main()
             Text::DrawStringCentered("!", exclamationPos, 18.0f, 1.0f);
 
             if (!Minigames::IsTaskOpen() && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
-                Minigames::OpenTask(id, t.name, t.room);
+                Minigames::OpenTask(id, t.name, t.room, t.id);
             }
             ++id;
             if (editorTaskPlacementMode) {
@@ -1660,7 +1667,7 @@ int main()
         int pendingDropoffRoom = -1;
         std::string pendingDropoffTaskName;
         if (Minigames::ConsumeTakeOutTrashDropoffPlacementRequest(pendingDropoffRoom, pendingDropoffTaskName)) {
-            const vec2 trashCanForwardOffset = vec2(0.0f, -192.0f);
+            const vec2 trashCanForwardOffset = vec2(0.0f, -96.0f);
             vec2 outsideTrashcanPos = vec2(220.0f, -250.0f);
             for (const Door& door : doors) {
                 if (door.roomId == pendingDropoffRoom) {
@@ -1670,6 +1677,9 @@ int main()
             }
 
             Minigames::SetTakeOutTrashDropoffWorldPos(pendingDropoffTaskName, pendingDropoffRoom, outsideTrashcanPos);
+            std::cout << "Placed outside trashcan for room " << pendingDropoffRoom
+                      << " at (" << outsideTrashcanPos.x << ", " << outsideTrashcanPos.y << ")"
+                      << std::endl;
         }
 
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
@@ -1803,6 +1813,17 @@ int main()
         if (Minigames::ConsumeTaskCompleteRequest()) {
             int activeTaskIndex = Minigames::GetCompletionTaskIndex();
             int completionTaskRoom = Minigames::GetCompletionTaskRoom();
+            int completionTaskId = Minigames::GetCompletionTaskId();
+            const std::string completionTaskName = Minigames::GetCompletionTaskName();
+            if ((activeTaskIndex < 0 || activeTaskIndex >= static_cast<int>(objectives.size())) && completionTaskId >= 0) {
+                for (int objectiveIndex = 0; objectiveIndex < static_cast<int>(objectives.size()); ++objectiveIndex) {
+                    if (objectives[objectiveIndex].id == completionTaskId &&
+                        (completionTaskRoom < 0 || objectives[objectiveIndex].room == completionTaskRoom)) {
+                        activeTaskIndex = objectiveIndex;
+                        break;
+                    }
+                }
+            }
             if ((activeTaskIndex < 0 || activeTaskIndex >= static_cast<int>(objectives.size())) && !Minigames::GetCompletionTaskName().empty()) {
                 for (int objectiveIndex = 0; objectiveIndex < static_cast<int>(objectives.size()); ++objectiveIndex) {
                     if (objectives[objectiveIndex].name == Minigames::GetCompletionTaskName() &&
@@ -1844,6 +1865,13 @@ int main()
                 }
 
                 WebFrontendTaskCompleted(completedBy.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);
+                std::cout << completedBy << " completed " << completedTask.name
+                          << " (room " << completedTask.room << ")" << std::endl;
+            } else {
+                std::cout << "Task completion request could not be matched to an objective: "
+                          << "name=\"" << completionTaskName << "\", room=" << completionTaskRoom
+                          << ", id=" << completionTaskId
+                          << std::endl;
             }
 
             Minigames::CloseTask();
