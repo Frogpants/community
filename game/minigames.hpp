@@ -18,6 +18,14 @@
 
 namespace Minigames {
 
+    constexpr float kWashDishesBubbleStartDelaySeconds = 3.0f;
+    constexpr float kWashDishesBubbleSpawnMinSeconds = 1.0f;
+    constexpr float kWashDishesBubbleSpawnMaxSeconds = 1.0f;
+    constexpr float kWashDishesBubbleLifeSeconds = 14.0f;
+    constexpr float kLaundryFillPerSecond = 0.12f;
+    constexpr float kLaundryDrainPerSecond = 0.04f;
+    constexpr float kTaskCompletionAutoCloseSeconds = 3.0f;
+
     enum class WashPhase {
         MovePlates,
         PopBubbles,
@@ -28,7 +36,7 @@ namespace Minigames {
     struct Bubble {
         vec2 pos = vec2(0.0f);
         float radius = 24.0f;
-        int lifeFrames = 120;
+        float lifeFrames = 120.0f;
     };
 
     struct WashDishesState {
@@ -49,7 +57,7 @@ namespace Minigames {
         WashPhase phase = WashPhase::MovePlates;
 
         std::vector<Bubble> bubbles;
-        int bubbleSpawnTimer = 0;
+        float bubbleSpawnTimer = 0.0f;
         int bubbleSpawned = 0;
         int bubblePopped = 0;
         int bubbleMissed = 0;
@@ -128,7 +136,7 @@ namespace Minigames {
     inline float taskPopupZoom = 1.0f;
     inline std::string taskPopupTitle;
     inline Menu* taskPopupControlsMenu = nullptr;
-    inline int taskCompletionDisplayFrames = 0;
+    inline float taskCompletionDisplayFrames = 0.0f;
 
     inline Menu* EnsureTaskPopupUiMenu() {
         Menu* menu = UI::FindMenu("minigame-task-popup");
@@ -208,7 +216,7 @@ namespace Minigames {
         washDishes.dragOffset = vec2(0.0f);
         washDishes.phase = WashPhase::MovePlates;
         washDishes.bubbles.clear();
-        washDishes.bubbleSpawnTimer = 0;
+        washDishes.bubbleSpawnTimer = 0.0f;
         washDishes.bubbleSpawned = 0;
         washDishes.bubblePopped = 0;
         washDishes.bubbleMissed = 0;
@@ -473,7 +481,7 @@ namespace Minigames {
     inline void SpawnBubble(vec2 sinkCenter, vec2 sinkHalf) {
         Bubble bubble;
         bubble.radius = static_cast<float>(30 + (std::rand() % 23));
-        bubble.lifeFrames = 220 + (std::rand() % 120);
+        bubble.lifeFrames = kWashDishesBubbleLifeSeconds + static_cast<float>(std::rand() % 150) / 100.0f;
 
         float minX = sinkCenter.x - sinkHalf.x + bubble.radius + 12.0f;
         float maxX = sinkCenter.x + sinkHalf.x - bubble.radius - 12.0f;
@@ -521,7 +529,7 @@ namespace Minigames {
         Text::DrawStringCentered("click x to exit", vec2(0.0f, -90.0f), 14.0f / zoom, bodySpacing);
     }
 
-    inline void DrawWashDishesContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
+    inline void DrawWashDishesContent(vec2 panelHalf, float zoom, vec2 mouseUI, float deltaTime) {
         InitializeWashDishesAssets();
 
         vec2 tableCenter = vec2(-panelHalf.x * 0.50f, -20.0f);
@@ -617,17 +625,19 @@ namespace Minigames {
 
             if (sinkIndex >= plateSlots) {
                 washDishes.phase = WashPhase::PopBubbles;
-                washDishes.bubbleSpawnTimer = 20;
+                washDishes.bubbleSpawnTimer = kWashDishesBubbleStartDelaySeconds;
                 washDishes.bubbles.clear();
             }
 
             std::string plateGoalText = "drag all " + std::to_string(plateSlots) + " plates from table to sink";
             Text::DrawStringCentered(plateGoalText, vec2(0.0f, -panelHalf.y + 58.0f), 14.0f / zoom, 2.1f);
         } else if (washDishes.phase == WashPhase::PopBubbles) {
-            washDishes.bubbleSpawnTimer -= 1;
+            washDishes.bubbleSpawnTimer -= deltaTime;
             if (washDishes.bubbleSpawnTimer <= 0) {
                 SpawnBubble(sinkCenter, zoneHalf - vec2(16.0f));
-                washDishes.bubbleSpawnTimer = 28 + (std::rand() % 34);
+                washDishes.bubbleSpawnTimer = kWashDishesBubbleSpawnMinSeconds +
+                    static_cast<float>(std::rand() % 1000) / 1000.0f *
+                    (kWashDishesBubbleSpawnMaxSeconds - kWashDishesBubbleSpawnMinSeconds);
             }
 
             if (Mouse::IsPressed(0)) {
@@ -652,8 +662,8 @@ namespace Minigames {
             }
 
             for (Bubble& bubble : washDishes.bubbles) {
-                bubble.lifeFrames -= 1;
-                bubble.pos.y += 0.04f;
+                bubble.lifeFrames -= deltaTime;
+                bubble.pos.y += 1.2f * deltaTime;
             }
 
             int before = static_cast<int>(washDishes.bubbles.size());
@@ -661,7 +671,7 @@ namespace Minigames {
                 std::remove_if(
                     washDishes.bubbles.begin(),
                     washDishes.bubbles.end(),
-                    [](const Bubble& bubble) { return bubble.lifeFrames <= 0; }
+                    [](const Bubble& bubble) { return bubble.lifeFrames <= 0.0f; }
                 ),
                 washDishes.bubbles.end()
             );
@@ -832,7 +842,7 @@ namespace Minigames {
         }
     }
 
-    inline void DrawLaundryContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
+    inline void DrawLaundryContent(vec2 panelHalf, float zoom, vec2 mouseUI, float deltaTime) {
         if (!laundry.initialized) {
             InitializeLaundryAssets();
         }
@@ -858,12 +868,11 @@ namespace Minigames {
         bool holdingToWash = Mouse::IsDown(0) && BoxCollide(mouseUI, vec2(0.0f), machineCenter, machineHalf);
         const float fillRate = 0.0105f;
         const float drainRate = 0.0022f;
-
         if (holdingToWash) {
             laundry.started = true;
-            laundry.washProgress += fillRate;
+            laundry.washProgress += kLaundryFillPerSecond * deltaTime;
         } else if (laundry.started && laundry.washProgress > 0.0f) {
-            laundry.washProgress -= drainRate;
+            laundry.washProgress -= kLaundryDrainPerSecond * deltaTime;
         }
 
         if (laundry.washProgress < 0.0f) {
@@ -1084,7 +1093,7 @@ namespace Minigames {
         return completionTaskName;
     }
 
-    inline bool DrawTaskPopup(vec2 screen, float zoom, vec2 mouseUI) {
+    inline bool DrawTaskPopup(vec2 screen, float zoom, vec2 mouseUI, float deltaTime) {
         if (!taskOpen) {
             // Hide menus if not completed, only remove if task was completed
             Menu* popupMenu = UI::FindMenu("minigame-task-popup");
@@ -1118,14 +1127,14 @@ namespace Minigames {
 
         // Auto-close task after completion is shown for a brief time
         if (taskCompleteRequested) {
-            taskCompletionDisplayFrames++;
-            if (taskCompletionDisplayFrames >= 120) {  // ~2 seconds at 60fps
+            taskCompletionDisplayFrames += deltaTime;
+            if (taskCompletionDisplayFrames >= kTaskCompletionAutoCloseSeconds) {
                 DeleteTaskUI();
                 CloseTask();
                 return true;
             }
         } else {
-            taskCompletionDisplayFrames = 0;
+            taskCompletionDisplayFrames = 0.0f;
         }
 
         Menu* popupMenu = EnsureTaskPopupUiMenu();
@@ -1165,11 +1174,11 @@ namespace Minigames {
         taskPopupControlsMenu = controlsMenu;
 
         if (IsWashDishesTask()) {
-            DrawWashDishesContent(taskPopupPanelHalf, zoom, mouseUI);
+            DrawWashDishesContent(taskPopupPanelHalf, zoom, mouseUI, deltaTime);
         } else if (IsTakeOutTrashTask()) {
             DrawTakeOutTrashContent(taskPopupPanelHalf, zoom, mouseUI);
         } else if (IsLaundryTask()) {
-            DrawLaundryContent(taskPopupPanelHalf, zoom, mouseUI);
+            DrawLaundryContent(taskPopupPanelHalf, zoom, mouseUI, deltaTime);
         } else {
             DrawGenericTaskContent(zoom);
         }

@@ -1795,7 +1795,7 @@ int RunCommunityApp()
 
         if (Minigames::IsTaskOpen()) {
             vec2 mouseUI = GetMouseUI(window);
-            Minigames::DrawTaskPopup(screen, zoom, mouseUI);
+            Minigames::DrawTaskPopup(screen, zoom, mouseUI, static_cast<float>(deltaTime));
         }
 
         if (Minigames::ConsumeTaskCompleteRequest()) {
