@@ -480,7 +480,7 @@ std::string getRandomUsername() {
 }
 
 std::vector<std::string> getCharacterTasks() {
-    return {"wash dishes", "take out trash", "do laundry"};
+    return {"wash dishes", "take out trash", "do laundry", "make bed"};
 }
 
 Character makeCharacterForRoom(int roomId, int stageIndex) {

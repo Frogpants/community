@@ -29,6 +29,10 @@ inline vec2 GetTaskSpawnPosition(const std::string& taskName, int taskIndex) {
         return vec2(300.0f, -250.0f);
     }
 
+    if (taskName == "make bed") {
+        return vec2(150.0f, -250.0f);
+    }
+
     float startX = -300.0f;
     float spacing = 300.0f;
     return vec2(startX + spacing * taskIndex, -250.0f);

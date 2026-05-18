@@ -33,7 +33,7 @@ struct Character {
     vec2 roamCenter = vec2(300.0, 0.0);
     float roamRadius = 500.0;
 
-    std::vector<std::string> tasks = {"wash dishes", "take out trash", "do laundry"}; //Tasks might be changed later!
+    std::vector<std::string> tasks = {"wash dishes", "take out trash", "do laundry", "make bed"}; //Tasks might be changed later!
 
     int tasksGiven = 0;
     int tasksCompleted = 0;
