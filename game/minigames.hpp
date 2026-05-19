@@ -111,6 +111,39 @@ namespace Minigames {
         bool completionSent = false;
     };
 
+    enum class MakeBedPhase {
+        PlacePillows,
+        PlaceBlanket,
+        Won
+    };
+
+    struct MakeBedState {
+        bool initialized = false;
+        GLuint bedTexture = 0;
+        vec2 bedDrawSize = vec2(0.0f);
+        std::vector<GLuint> pillowTextures;
+        std::vector<GLuint> blanketTextures;
+        int leftPillowTextureIndex = -1;
+        int rightPillowTextureIndex = -1;
+        int blanketTextureIndex = -1;
+
+        std::vector<vec2> pillowHomePositions;
+        std::vector<vec2> pillowPositions;
+        std::vector<bool> pillowPlaced;
+        int draggingPillow = -1;
+        vec2 pillowDragOffset = vec2(0.0f);
+
+        vec2 blanketHomePosition = vec2(0.0f);
+        vec2 blanketPosition = vec2(0.0f);
+        vec2 blanketVelocity = vec2(0.0f);
+        bool blanketPlaced = false;
+        int draggingBlanket = -1;
+        vec2 blanketDragOffset = vec2(0.0f);
+
+        MakeBedPhase phase = MakeBedPhase::PlacePillows;
+        bool completionSent = false;
+    };
+
     inline bool taskOpen = false;
     inline bool taskCompleteRequested = false;
     inline int activeTaskIndex = -1;
@@ -124,6 +157,7 @@ namespace Minigames {
     inline WashDishesState washDishes;
     inline TakeOutTrashState takeOutTrash;
     inline LaundryState laundry;
+    inline MakeBedState makeBed;
     inline std::vector<PendingTrashDropoff> pendingTrashDropoffs;
     inline bool takeOutTrashDropoffPlacementRequested = false;
     inline int takeOutTrashDropoffRequestedRoom = -1;
@@ -210,6 +244,10 @@ namespace Minigames {
         return activeTaskName == "do laundry";
     }
 
+    inline bool IsMakeBedTask() {
+        return activeTaskName == "make bed";
+    }
+
     inline void ResetWashDishesState() {
         washDishes.initialized = false;
         washDishes.draggingPlate = -1;
@@ -239,6 +277,136 @@ namespace Minigames {
         laundry.washProgress = 0.0f;
         laundry.started = false;
         laundry.completionSent = false;
+    }
+
+    inline void ResetMakeBedState() {
+        makeBed.initialized = false;
+        makeBed.leftPillowTextureIndex = -1;
+        makeBed.rightPillowTextureIndex = -1;
+        makeBed.blanketTextureIndex = -1;
+        makeBed.bedDrawSize = vec2(0.0f);
+        makeBed.pillowHomePositions.clear();
+        makeBed.pillowPositions.clear();
+        makeBed.pillowPlaced.clear();
+        makeBed.draggingPillow = -1;
+        makeBed.pillowDragOffset = vec2(0.0f);
+        makeBed.blanketHomePosition = vec2(0.0f);
+        makeBed.blanketPosition = vec2(0.0f);
+        makeBed.blanketVelocity = vec2(0.0f);
+        makeBed.blanketPlaced = false;
+        makeBed.draggingBlanket = -1;
+        makeBed.blanketDragOffset = vec2(0.0f);
+        makeBed.phase = MakeBedPhase::PlacePillows;
+        makeBed.completionSent = false;
+    }
+
+    inline void InitializeMakeBedAssets() {
+        auto loadMakeBedTexture = [](const std::string& relativePath) {
+            std::vector<std::string> candidates = {
+                "dist/assets/minigames/make bed/" + relativePath,
+                "assets/minigames/make bed/" + relativePath,
+                "dist/assets/minigames/make_bed/" + relativePath,
+                "assets/minigames/make_bed/" + relativePath
+            };
+
+            for (const std::string& path : candidates) {
+                GLuint tex = Image::Load(path.c_str(), false);
+                if (tex != 0) {
+                    return tex;
+                }
+            }
+
+            return 0u;
+        };
+
+        if (makeBed.bedTexture == 0) {
+            makeBed.bedTexture = loadMakeBedTexture("bed.png");
+        }
+
+        if (makeBed.pillowTextures.empty()) {
+            for (int index = 1; index <= 4; ++index) {
+                makeBed.pillowTextures.push_back(loadMakeBedTexture("pillow" + std::to_string(index) + ".png"));
+            }
+        }
+
+        if (makeBed.blanketTextures.empty()) {
+            for (int index = 1; index <= 4; ++index) {
+                makeBed.blanketTextures.push_back(loadMakeBedTexture("blanket" + std::to_string(index) + ".png"));
+            }
+        }
+    }
+
+    inline void BuildMakeBedLayout(vec2 panelHalf) {
+        const int pillowCount = static_cast<int>(makeBed.pillowTextures.size());
+        const int blanketCount = static_cast<int>(makeBed.blanketTextures.size());
+
+        makeBed.leftPillowTextureIndex = pillowCount > 0 ? std::rand() % pillowCount : -1;
+        if (pillowCount > 1) {
+            do {
+                makeBed.rightPillowTextureIndex = std::rand() % pillowCount;
+            } while (makeBed.rightPillowTextureIndex == makeBed.leftPillowTextureIndex);
+        } else {
+            makeBed.rightPillowTextureIndex = makeBed.leftPillowTextureIndex;
+        }
+
+        makeBed.blanketTextureIndex = blanketCount > 0 ? std::rand() % blanketCount : -1;
+
+        // Compute bed size similarly to DrawMakeBedContent so slot positions match rendering
+        vec2 bedCenter = vec2(0.0f, -6.0f);
+        vec2 bedSize = vec2(panelHalf.x * 0.88f, panelHalf.y * 0.70f);
+        if (makeBed.bedTexture != 0) {
+            int bedWidth = 0;
+            int bedHeight = 0;
+            if (Image::GetTextureSize(makeBed.bedTexture, bedWidth, bedHeight) && bedWidth > 0 && bedHeight > 0) {
+                float maxWidth = panelHalf.x * 0.92f;
+                float maxHeight = panelHalf.y * 0.72f;
+                float scale = std::min(maxWidth / static_cast<float>(bedWidth), maxHeight / static_cast<float>(bedHeight));
+                bedSize = vec2(static_cast<float>(bedWidth) * scale, static_cast<float>(bedHeight) * scale);
+            }
+        }
+
+        // Pillow slots positioned relative to bed so pillows snap onto the bed texture
+        vec2 pillowSlots[2] = {
+            bedCenter + vec2(-bedSize.x * 0.30f, bedSize.y * 0.24f),
+            bedCenter + vec2(bedSize.x * 0.30f, bedSize.y * 0.24f)
+        };
+        // Ensure the stored home positions match the dynamically computed slots
+        if (makeBed.pillowHomePositions.size() != 2) {
+            makeBed.pillowHomePositions = {pillowSlots[0], pillowSlots[1]};
+        } else {
+            makeBed.pillowHomePositions[0] = pillowSlots[0];
+            makeBed.pillowHomePositions[1] = pillowSlots[1];
+        }
+
+        // If pillows haven't been placed yet, keep their positions synced to the home slots
+        if (makeBed.pillowPositions.size() != 2) {
+            makeBed.pillowPositions = {pillowSlots[0], pillowSlots[1]};
+        } else {
+            for (int pi = 0; pi < 2; ++pi) {
+                if (!makeBed.pillowPlaced[pi]) {
+                    makeBed.pillowPositions[pi] = pillowSlots[pi];
+                }
+            }
+        }
+
+        makeBed.pillowHomePositions.clear();
+        makeBed.pillowHomePositions.push_back(pillowSlots[0]);
+        makeBed.pillowHomePositions.push_back(pillowSlots[1]);
+
+        makeBed.pillowPositions = makeBed.pillowHomePositions;
+        makeBed.pillowPlaced = {false, false};
+        makeBed.draggingPillow = -1;
+        makeBed.pillowDragOffset = vec2(0.0f);
+
+        makeBed.blanketHomePosition = bedCenter + vec2(0.0f, bedSize.y * 0.04f);
+        makeBed.blanketPosition = makeBed.blanketHomePosition;
+        makeBed.blanketVelocity = vec2(0.0f);
+        makeBed.blanketPlaced = false;
+        makeBed.draggingBlanket = -1;
+        makeBed.blanketDragOffset = vec2(0.0f);
+        makeBed.phase = MakeBedPhase::PlacePillows;
+        makeBed.completionSent = false;
+        makeBed.initialized = true;
     }
 
     inline void InitializeWashDishesAssets() {
@@ -913,6 +1081,250 @@ namespace Minigames {
         }
     }
 
+    inline void DrawMakeBedContent(vec2 panelHalf, float zoom, vec2 mouseUI) {
+        InitializeMakeBedAssets();
+
+        if (!makeBed.initialized ||
+            static_cast<int>(makeBed.pillowPositions.size()) != 2 ||
+            static_cast<int>(makeBed.pillowHomePositions.size()) != 2 ||
+            static_cast<int>(makeBed.pillowPlaced.size()) != 2) {
+            BuildMakeBedLayout(panelHalf);
+        }
+
+        vec2 bedCenter = vec2(0.0f, -6.0f);
+        vec2 bedSize = vec2(panelHalf.x * 0.88f, panelHalf.y * 0.70f);
+        if (makeBed.bedTexture != 0) {
+            int bedWidth = 0;
+            int bedHeight = 0;
+            if (Image::GetTextureSize(makeBed.bedTexture, bedWidth, bedHeight) && bedWidth > 0 && bedHeight > 0) {
+                float maxWidth = panelHalf.x * 0.92f;
+                float maxHeight = panelHalf.y * 0.72f;
+                float scale = std::min(maxWidth / static_cast<float>(bedWidth), maxHeight / static_cast<float>(bedHeight));
+                bedSize = vec2(static_cast<float>(bedWidth) * scale, static_cast<float>(bedHeight) * scale);
+            }
+        }
+
+        // Make pillow slot smaller and proportional to bed size
+        vec2 pillowSlotSize = vec2(bedSize.x * 0.22f, bedSize.y * 0.12f);
+        vec2 blanketTargetSize = vec2(bedSize.x * 0.60f, bedSize.y * 0.40f);
+        // Draw pillows slightly smaller than slot so they sit neatly inside
+        vec2 pillowDrawSize = pillowSlotSize * 0.86f;
+        vec2 blanketDrawSize = vec2(bedSize.x * 0.88f, bedSize.y * 0.56f);
+
+        vec2 pillowSlots[2] = {
+            bedCenter + vec2(-bedSize.x * 0.30f, -bedSize.y * 0.22f),
+            bedCenter + vec2(bedSize.x * 0.30f, -bedSize.y * 0.22f)
+        };
+        vec2 blanketTarget = bedCenter + vec2(0.0f, bedSize.y * 0.04f);
+
+        if (makeBed.bedTexture != 0) {
+            Image::Draw(makeBed.bedTexture, bedCenter, bedSize, 0.0f);
+        } else {
+            Image::DrawRect(bedCenter, bedSize, 0.89f, 0.84f, 0.77f, 1.0f, 0.0f);
+            Image::DrawRect(bedCenter + vec2(0.0f, 10.0f), vec2(bedSize.x * 0.82f, bedSize.y * 0.58f), 0.78f, 0.68f, 0.58f, 0.80f, 0.0f);
+        }
+
+        Text::DrawStringCentered("make the bed", vec2(0.0f, -panelHalf.y + 48.0f), 16.0f / zoom, 2.1f);
+
+        auto slotOccupied = [&](int slotIndex) {
+            for (int pillowIndex = 0; pillowIndex < 2; ++pillowIndex) {
+                if (makeBed.pillowPlaced[pillowIndex] &&
+                    makeBed.pillowPositions[pillowIndex].x == pillowSlots[slotIndex].x &&
+                    makeBed.pillowPositions[pillowIndex].y == pillowSlots[slotIndex].y) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if (makeBed.phase == MakeBedPhase::PlacePillows) {
+            Text::DrawStringCentered("drag the 2 pillows into the squares", vec2(0.0f, -panelHalf.y + 82.0f), 13.0f / zoom, 2.0f);
+
+            for (int slotIndex = 0; slotIndex < 2; ++slotIndex) {
+                // Draw an outline-only slot using four thin rects (top, bottom, left, right)
+                vec2 slot = pillowSlots[slotIndex];
+                vec2 slotHalf = pillowSlotSize * 0.5f;
+                float border = std::max(6.0f, pillowSlotSize.y * 0.12f);
+                float br = 0.36f, bg = 0.29f, bb = 0.23f, ba = 1.0f;
+
+                // top
+                Image::DrawRect(slot + vec2(0.0f, -slotHalf.y + border * 0.5f), vec2(pillowSlotSize.x, border), br, bg, bb, ba, 0.0f);
+                // bottom
+                Image::DrawRect(slot + vec2(0.0f, slotHalf.y - border * 0.5f), vec2(pillowSlotSize.x, border), br, bg, bb, ba, 0.0f);
+                // left
+                Image::DrawRect(slot + vec2(-slotHalf.x + border * 0.5f, 0.0f), vec2(border, pillowSlotSize.y), br, bg, bb, ba, 0.0f);
+                // right
+                Image::DrawRect(slot + vec2(slotHalf.x - border * 0.5f, 0.0f), vec2(border, pillowSlotSize.y), br, bg, bb, ba, 0.0f);
+            }
+
+            if (makeBed.draggingPillow == -1 && Mouse::IsPressed(0)) {
+                for (int pillowIndex = 1; pillowIndex >= 0; --pillowIndex) {
+                    if (makeBed.pillowPlaced[pillowIndex]) {
+                        continue;
+                    }
+
+                    if (BoxCollide(mouseUI, vec2(0.0f), makeBed.pillowPositions[pillowIndex], pillowDrawSize)) {
+                        makeBed.draggingPillow = pillowIndex;
+                        makeBed.pillowDragOffset = makeBed.pillowPositions[pillowIndex] - mouseUI;
+                        break;
+                    }
+                }
+            }
+
+            if (makeBed.draggingPillow != -1) {
+                int dragged = makeBed.draggingPillow;
+                if (Mouse::IsDown(0)) {
+                    makeBed.pillowPositions[dragged] = mouseUI + makeBed.pillowDragOffset;
+                } else {
+                    bool placed = false;
+                    for (int slotIndex = 0; slotIndex < 2; ++slotIndex) {
+                        if (slotOccupied(slotIndex)) {
+                            continue;
+                        }
+
+                        if (BoxCollide(makeBed.pillowPositions[dragged], pillowDrawSize, pillowSlots[slotIndex], pillowSlotSize)) {
+                            makeBed.pillowPositions[dragged] = pillowSlots[slotIndex];
+                            makeBed.pillowPlaced[dragged] = true;
+                            placed = true;
+                            break;
+                        }
+                    }
+
+                    if (!placed) {
+                        makeBed.pillowPositions[dragged] = makeBed.pillowHomePositions[dragged];
+                    }
+
+                    makeBed.draggingPillow = -1;
+                }
+            }
+
+            if (makeBed.pillowPlaced[0] && makeBed.pillowPlaced[1]) {
+                makeBed.phase = MakeBedPhase::PlaceBlanket;
+                makeBed.blanketPosition = makeBed.blanketHomePosition;
+                makeBed.blanketVelocity = vec2(0.0f);
+                makeBed.draggingBlanket = -1;
+                makeBed.blanketDragOffset = vec2(0.0f);
+            }
+
+            for (int pillowIndex = 0; pillowIndex < 2; ++pillowIndex) {
+                int textureIndex = pillowIndex == 0 ? makeBed.leftPillowTextureIndex : makeBed.rightPillowTextureIndex;
+                GLuint tex = (textureIndex >= 0 && textureIndex < static_cast<int>(makeBed.pillowTextures.size()))
+                    ? makeBed.pillowTextures[textureIndex]
+                    : 0;
+                if (tex != 0) {
+                    int tw = 0, th = 0;
+                    if (Image::GetTextureSize(tex, tw, th) && tw > 0 && th > 0) {
+                        float aspect = static_cast<float>(tw) / static_cast<float>(th);
+                        float targetW = pillowDrawSize.x;
+                        float targetH = pillowDrawSize.y;
+                        if (targetW / targetH > aspect) {
+                            targetW = targetH * aspect;
+                        } else {
+                            targetH = targetW / aspect;
+                        }
+                        Image::Draw(tex, makeBed.pillowPositions[pillowIndex], vec2(targetW, targetH), 0.0f);
+                    } else {
+                        Image::Draw(tex, makeBed.pillowPositions[pillowIndex], pillowDrawSize, 0.0f);
+                    }
+                } else {
+                    Image::DrawRect(makeBed.pillowPositions[pillowIndex], pillowDrawSize, 0.91f, 0.91f, 0.96f, 1.0f, 0.0f);
+                }
+            }
+        }
+
+        if (makeBed.phase == MakeBedPhase::PlaceBlanket || makeBed.phase == MakeBedPhase::Won) {
+            if (makeBed.phase == MakeBedPhase::PlaceBlanket) {
+                Text::DrawStringCentered("now drag the blanket up onto the bed", vec2(0.0f, -panelHalf.y + 82.0f), 13.0f / zoom, 2.0f);
+            }
+
+            for (int pillowIndex = 0; pillowIndex < 2; ++pillowIndex) {
+                int textureIndex = pillowIndex == 0 ? makeBed.leftPillowTextureIndex : makeBed.rightPillowTextureIndex;
+                GLuint tex = (textureIndex >= 0 && textureIndex < static_cast<int>(makeBed.pillowTextures.size()))
+                    ? makeBed.pillowTextures[textureIndex]
+                    : 0;
+                if (tex != 0) {
+                    Image::Draw(tex, makeBed.pillowPositions[pillowIndex], pillowDrawSize, 0.0f);
+                } else {
+                    Image::DrawRect(makeBed.pillowPositions[pillowIndex], pillowDrawSize, 0.91f, 0.91f, 0.96f, 1.0f, 0.0f);
+                }
+            }
+
+            Image::DrawRect(blanketTarget, blanketTargetSize, 0.98f, 0.96f, 0.90f, 0.16f, 0.0f);
+
+            if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket == -1) {
+                makeBed.blanketVelocity.y -= 1.15f * ::deltaTime;
+                makeBed.blanketPosition.y += makeBed.blanketVelocity.y * 60.0f * ::deltaTime;
+                if (makeBed.blanketPosition.y < makeBed.blanketHomePosition.y) {
+                    makeBed.blanketPosition.y = makeBed.blanketHomePosition.y;
+                    makeBed.blanketVelocity.y = 0.0f;
+                }
+            }
+
+            if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket == -1 && Mouse::IsPressed(0)) {
+                if (BoxCollide(mouseUI, vec2(0.0f), makeBed.blanketPosition, blanketDrawSize)) {
+                    makeBed.draggingBlanket = 0;
+                    makeBed.blanketDragOffset = makeBed.blanketPosition - mouseUI;
+                }
+            }
+
+            if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket != -1) {
+                if (Mouse::IsDown(0)) {
+                    makeBed.blanketPosition = mouseUI + makeBed.blanketDragOffset;
+                    makeBed.blanketVelocity = vec2(0.0f);
+                } else {
+                    bool placed = BoxCollide(makeBed.blanketPosition, blanketDrawSize, blanketTarget, blanketTargetSize);
+                    if (placed) {
+                        makeBed.blanketPosition = blanketTarget;
+                        makeBed.blanketPlaced = true;
+                        makeBed.phase = MakeBedPhase::Won;
+                    } else {
+                        makeBed.blanketVelocity = vec2(0.0f, -2.2f);
+                    }
+                    makeBed.draggingBlanket = -1;
+                }
+            }
+
+            int blanketTextureCount = static_cast<int>(makeBed.blanketTextures.size());
+            GLuint blanketTex = (makeBed.blanketTextureIndex >= 0 && makeBed.blanketTextureIndex < blanketTextureCount)
+                ? makeBed.blanketTextures[makeBed.blanketTextureIndex]
+                : 0;
+
+            if (blanketTex != 0) {
+                int tw = 0, th = 0;
+                if (Image::GetTextureSize(blanketTex, tw, th) && tw > 0 && th > 0) {
+                    float aspect = static_cast<float>(tw) / static_cast<float>(th);
+                    float targetW = blanketDrawSize.x;
+                    float targetH = blanketDrawSize.y;
+                    if (targetW / targetH > aspect) {
+                        targetW = targetH * aspect;
+                    } else {
+                        targetH = targetW / aspect;
+                    }
+                    Image::Draw(blanketTex, makeBed.blanketPosition, vec2(targetW, targetH), 0.0f);
+                } else {
+                    Image::Draw(blanketTex, makeBed.blanketPosition, blanketDrawSize, 0.0f);
+                }
+            } else {
+                Image::DrawRect(makeBed.blanketPosition, blanketDrawSize, 0.55f, 0.38f, 0.28f, 1.0f, 0.0f);
+            }
+        }
+
+        if (makeBed.phase == MakeBedPhase::Won) {
+            Image::DrawRect(vec2(0.0f, -20.0f), vec2(panelHalf.x * 0.70f, 90.0f), 0.76f, 0.90f, 0.78f, 1.0f, 0.0f);
+            Text::DrawStringCentered("bed is ready", vec2(0.0f, 0.0f), 20.0f / zoom, 2.2f);
+            Text::DrawStringCentered("task complete", vec2(0.0f, -36.0f), 16.0f / zoom, 2.1f);
+
+            if (!makeBed.completionSent) {
+                completionTaskIndex = activeTaskIndex;
+                completionTaskRoom = activeTaskRoom;
+                completionTaskId = activeTaskId;
+                completionTaskName = activeTaskName;
+                taskCompleteRequested = true;
+                makeBed.completionSent = true;
+            }
+        }
+    }
+
     inline void DrawTakeOutTrashWorldPrompt(int playerRoom, float zoom) {
         if (playerRoom != 0) {
             return;
@@ -1013,6 +1425,10 @@ namespace Minigames {
         if (IsLaundryTask()) {
             ResetLaundryState();
         }
+
+        if (IsMakeBedTask()) {
+            ResetMakeBedState();
+        }
     }
 
     inline void CloseTask() {
@@ -1036,6 +1452,10 @@ namespace Minigames {
 
         if (IsLaundryTask()) {
             ResetLaundryState();
+        }
+
+        if (IsMakeBedTask()) {
+            ResetMakeBedState();
         }
 
         activeTaskName.clear();
@@ -1179,6 +1599,8 @@ namespace Minigames {
             DrawTakeOutTrashContent(taskPopupPanelHalf, zoom, mouseUI);
         } else if (IsLaundryTask()) {
             DrawLaundryContent(taskPopupPanelHalf, zoom, mouseUI, deltaTime);
+        } else if (IsMakeBedTask()) {
+            DrawMakeBedContent(taskPopupPanelHalf, zoom, mouseUI);
         } else {
             DrawGenericTaskContent(zoom);
         }
