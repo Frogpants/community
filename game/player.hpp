@@ -14,6 +14,7 @@ struct Player {
     vec2 vel = vec2(0.0);
 
     GLuint texture = 0;  // Will be loaded after GLFW initialization
+    std::vector<GLuint> textures = {0};
 
     float coins = 0.0;
 

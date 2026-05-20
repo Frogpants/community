@@ -298,6 +298,9 @@ std::string server = "localhost";
 
 int tick = 1;
 
+// Animation timing driven by real delta time (seconds)
+float playerAnimTimer = 0.0f;
+
 bool editor = false;
 int mode = 0;
 int selectMode = 0;
@@ -1040,9 +1043,22 @@ int RunCommunityApp()
     glOrtho(-screen.x / zoom, screen.x / zoom, -screen.y / zoom, screen.y / zoom, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 
-    player.texture = Image::Load("assets/agent-bullet.png");
+    // Load player animation frames from game-art (stand, step1, step2)
+    player.textures.clear();
+    player.textures.push_back(Image::Load("assets/game-art/player-stand.png"));
+    player.textures.push_back(Image::Load("assets/game-art/player-step1.png"));
+    player.textures.push_back(Image::Load("assets/game-art/player-step2.png"));
+    // Fallback single texture for compatibility
+    player.texture = (player.textures.size() > 0 && player.textures[0] != 0) ? player.textures[0] : Image::Load("assets/agent-bullet.png");
+
     characters.push_back(makeCharacterForRoom(1, 0));
-    characters[0].texture = Image::Load("assets/npcs/character.png");
+    // Use grandpa art for the NPC image when available
+    GLuint grandpaTex = Image::Load("assets/game-art/grandpa.png");
+    if (grandpaTex != 0) {
+        characters[0].texture = grandpaTex;
+    } else {
+        characters[0].texture = Image::Load("assets/npcs/character.png");
+    }
 
     std::vector<Door> doors;
     if (!hubDoorPositions.empty()) {
@@ -1672,12 +1688,35 @@ int RunCommunityApp()
 
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
 
-        Image::Draw(player.texture, player.pos, 150);
-        multiplayer.drawRemotePlayers(player.texture, player.room);
+        // Update animation timer using real deltaTime
+        playerAnimTimer += deltaTime;
+        if (playerAnimTimer > 1000.0f) {
+            playerAnimTimer = std::fmod(playerAnimTimer, 1.0f);
+        }
+
+        // Select player frame: standing (index 0) when stationary, stepping frames (1,2...) when moving
+        GLuint activePlayerTexture = player.texture;
+        float velMag = std::sqrt(player.vel.x * player.vel.x + player.vel.y * player.vel.y);
+        const float movementThreshold = 0.35f;
+        const float stepFps = 8.0f; // animation speed in frames per second
+        const float spriteScaleFactor = 0.33f; // scale images down by 4
+        if (player.textures.size() >= 3 && velMag > movementThreshold) {
+            int stepFrames = static_cast<int>(player.textures.size()) - 1;
+            int frame = static_cast<int>(std::floor(playerAnimTimer * stepFps)) % stepFrames;
+            if (frame < 0) frame = 0;
+            activePlayerTexture = player.textures[1 + frame];
+        } else if (!player.textures.empty()) {
+            activePlayerTexture = player.textures[0];
+        }
+
+        float playerDrawSize = 150.0f * spriteScaleFactor;
+        Image::Draw(activePlayerTexture, player.pos, playerDrawSize);
+        multiplayer.drawRemotePlayers(activePlayerTexture, player.room);
         for (const Character& c : characters) {
-            if (c.room == player.room) {
-                Image::Draw(c.texture, c.pos, 150);
-            }
+                if (c.room == player.room) {
+                    float charDrawSize = 150.0f * 0.25f;
+                    Image::Draw(c.texture, c.pos, charDrawSize);
+                }
         }
 
         // UI
