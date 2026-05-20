@@ -336,6 +336,50 @@ namespace Minigames {
         }
     }
 
+    struct MakeBedLayoutMetrics {
+        vec2 bedCenter = vec2(0.0f);
+        vec2 bedSize = vec2(0.0f);
+        vec2 pillowSlots[2];
+        vec2 pillowHomes[2];
+        vec2 pillowSlotSize = vec2(0.0f);
+        vec2 pillowDrawSize = vec2(0.0f);
+        vec2 blanketHome = vec2(0.0f);
+        vec2 blanketTarget = vec2(0.0f);
+        vec2 blanketTargetSize = vec2(0.0f);
+        vec2 blanketDrawSize = vec2(0.0f);
+    };
+
+    inline MakeBedLayoutMetrics GetMakeBedLayout(vec2 panelHalf) {
+        MakeBedLayoutMetrics layout;
+        layout.bedCenter = vec2(0.0f, -6.0f);
+        layout.bedSize = vec2(panelHalf.x * 0.88f, panelHalf.y * 0.70f);
+        if (makeBed.bedTexture != 0) {
+            int bedWidth = 0;
+            int bedHeight = 0;
+            if (Image::GetTextureSize(makeBed.bedTexture, bedWidth, bedHeight) && bedWidth > 0 && bedHeight > 0) {
+                float maxWidth = panelHalf.x * 0.92f;
+                float maxHeight = panelHalf.y * 0.72f;
+                float scale = std::min(maxWidth / static_cast<float>(bedWidth), maxHeight / static_cast<float>(bedHeight));
+                layout.bedSize = vec2(static_cast<float>(bedWidth) * scale, static_cast<float>(bedHeight) * scale);
+            }
+        }
+
+        float pillowHalf = std::min(layout.bedSize.x * 0.30f, layout.bedSize.y * 0.28f);
+        layout.pillowSlotSize = vec2(pillowHalf);
+        layout.pillowDrawSize = layout.pillowSlotSize * 1.05f;
+        // Move pillow outline slots much higher on the screen and spread them further apart
+        layout.pillowSlots[0] = layout.bedCenter + vec2(-layout.bedSize.x * 0.55f, layout.bedSize.y * 0.40f);
+        layout.pillowSlots[1] = layout.bedCenter + vec2(layout.bedSize.x * 0.55f, layout.bedSize.y * 0.40f);
+        layout.pillowHomes[0] = layout.bedCenter + vec2(-layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
+        layout.pillowHomes[1] = layout.bedCenter + vec2(layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
+
+        layout.blanketHome = layout.bedCenter + vec2(0.0f, -layout.bedSize.y * 0.38f);
+        layout.blanketTarget = layout.bedCenter + vec2(0.0f, layout.bedSize.y * 0.02f);
+        layout.blanketTargetSize = vec2(layout.bedSize.x * 0.42f, layout.bedSize.y * 0.26f);
+        layout.blanketDrawSize = vec2(layout.bedSize.x * 0.52f, layout.bedSize.y * 0.36f);
+        return layout;
+    }
+
     inline void BuildMakeBedLayout(vec2 panelHalf) {
         const int pillowCount = static_cast<int>(makeBed.pillowTextures.size());
         const int blanketCount = static_cast<int>(makeBed.blanketTextures.size());
@@ -351,54 +395,36 @@ namespace Minigames {
 
         makeBed.blanketTextureIndex = blanketCount > 0 ? std::rand() % blanketCount : -1;
 
-        // Compute bed size similarly to DrawMakeBedContent so slot positions match rendering
-        vec2 bedCenter = vec2(0.0f, -6.0f);
-        vec2 bedSize = vec2(panelHalf.x * 0.88f, panelHalf.y * 0.70f);
-        if (makeBed.bedTexture != 0) {
-            int bedWidth = 0;
-            int bedHeight = 0;
-            if (Image::GetTextureSize(makeBed.bedTexture, bedWidth, bedHeight) && bedWidth > 0 && bedHeight > 0) {
-                float maxWidth = panelHalf.x * 0.92f;
-                float maxHeight = panelHalf.y * 0.72f;
-                float scale = std::min(maxWidth / static_cast<float>(bedWidth), maxHeight / static_cast<float>(bedHeight));
-                bedSize = vec2(static_cast<float>(bedWidth) * scale, static_cast<float>(bedHeight) * scale);
-            }
-        }
-
-        // Pillow slots positioned relative to bed so pillows snap onto the bed texture
-        vec2 pillowSlots[2] = {
-            bedCenter + vec2(-bedSize.x * 0.30f, bedSize.y * 0.24f),
-            bedCenter + vec2(bedSize.x * 0.30f, bedSize.y * 0.24f)
-        };
-        // Ensure the stored home positions match the dynamically computed slots
+        MakeBedLayoutMetrics layout = GetMakeBedLayout(panelHalf);
+        // Keep the draggable pillows staged off the bed until the player places them.
         if (makeBed.pillowHomePositions.size() != 2) {
-            makeBed.pillowHomePositions = {pillowSlots[0], pillowSlots[1]};
+            makeBed.pillowHomePositions = {layout.pillowHomes[0], layout.pillowHomes[1]};
         } else {
-            makeBed.pillowHomePositions[0] = pillowSlots[0];
-            makeBed.pillowHomePositions[1] = pillowSlots[1];
+            makeBed.pillowHomePositions[0] = layout.pillowHomes[0];
+            makeBed.pillowHomePositions[1] = layout.pillowHomes[1];
         }
 
-        // If pillows haven't been placed yet, keep their positions synced to the home slots
+        // If pillows haven't been placed yet, keep their positions synced to the side start spots.
         if (makeBed.pillowPositions.size() != 2) {
-            makeBed.pillowPositions = {pillowSlots[0], pillowSlots[1]};
+            makeBed.pillowPositions = {layout.pillowHomes[0], layout.pillowHomes[1]};
         } else {
             for (int pi = 0; pi < 2; ++pi) {
                 if (!makeBed.pillowPlaced[pi]) {
-                    makeBed.pillowPositions[pi] = pillowSlots[pi];
+                    makeBed.pillowPositions[pi] = layout.pillowHomes[pi];
                 }
             }
         }
 
         makeBed.pillowHomePositions.clear();
-        makeBed.pillowHomePositions.push_back(pillowSlots[0]);
-        makeBed.pillowHomePositions.push_back(pillowSlots[1]);
+        makeBed.pillowHomePositions.push_back(layout.pillowHomes[0]);
+        makeBed.pillowHomePositions.push_back(layout.pillowHomes[1]);
 
         makeBed.pillowPositions = makeBed.pillowHomePositions;
         makeBed.pillowPlaced = {false, false};
         makeBed.draggingPillow = -1;
         makeBed.pillowDragOffset = vec2(0.0f);
 
-        makeBed.blanketHomePosition = bedCenter + vec2(0.0f, bedSize.y * 0.04f);
+        makeBed.blanketHomePosition = layout.blanketHome;
         makeBed.blanketPosition = makeBed.blanketHomePosition;
         makeBed.blanketVelocity = vec2(0.0f);
         makeBed.blanketPlaced = false;
@@ -1091,31 +1117,15 @@ namespace Minigames {
             BuildMakeBedLayout(panelHalf);
         }
 
-        vec2 bedCenter = vec2(0.0f, -6.0f);
-        vec2 bedSize = vec2(panelHalf.x * 0.88f, panelHalf.y * 0.70f);
-        if (makeBed.bedTexture != 0) {
-            int bedWidth = 0;
-            int bedHeight = 0;
-            if (Image::GetTextureSize(makeBed.bedTexture, bedWidth, bedHeight) && bedWidth > 0 && bedHeight > 0) {
-                float maxWidth = panelHalf.x * 0.92f;
-                float maxHeight = panelHalf.y * 0.72f;
-                float scale = std::min(maxWidth / static_cast<float>(bedWidth), maxHeight / static_cast<float>(bedHeight));
-                bedSize = vec2(static_cast<float>(bedWidth) * scale, static_cast<float>(bedHeight) * scale);
-            }
-        }
-
-        // Make pillow slot smaller and proportional to bed size
-        vec2 pillowSlotSize = vec2(bedSize.x * 0.22f, bedSize.y * 0.12f);
-        vec2 blanketTargetSize = vec2(bedSize.x * 0.60f, bedSize.y * 0.40f);
-        // Draw pillows slightly smaller than slot so they sit neatly inside
-        vec2 pillowDrawSize = pillowSlotSize * 0.86f;
-        vec2 blanketDrawSize = vec2(bedSize.x * 0.88f, bedSize.y * 0.56f);
-
-        vec2 pillowSlots[2] = {
-            bedCenter + vec2(-bedSize.x * 0.30f, -bedSize.y * 0.22f),
-            bedCenter + vec2(bedSize.x * 0.30f, -bedSize.y * 0.22f)
-        };
-        vec2 blanketTarget = bedCenter + vec2(0.0f, bedSize.y * 0.04f);
+        MakeBedLayoutMetrics layout = GetMakeBedLayout(panelHalf);
+        vec2 bedCenter = layout.bedCenter;
+        vec2 bedSize = layout.bedSize;
+        vec2 pillowSlotSize = layout.pillowSlotSize;
+        vec2 blanketTargetSize = layout.blanketTargetSize;
+        vec2 pillowDrawSize = layout.pillowDrawSize;
+        vec2 blanketDrawSize = layout.blanketDrawSize;
+        vec2 pillowSlots[2] = {layout.pillowSlots[0], layout.pillowSlots[1]};
+        vec2 blanketTarget = layout.blanketTarget;
 
         if (makeBed.bedTexture != 0) {
             Image::Draw(makeBed.bedTexture, bedCenter, bedSize, 0.0f);
@@ -1143,18 +1153,18 @@ namespace Minigames {
             for (int slotIndex = 0; slotIndex < 2; ++slotIndex) {
                 // Draw an outline-only slot using four thin rects (top, bottom, left, right)
                 vec2 slot = pillowSlots[slotIndex];
-                vec2 slotHalf = pillowSlotSize * 0.5f;
-                float border = std::max(6.0f, pillowSlotSize.y * 0.12f);
+                vec2 slotHalf = pillowSlotSize;
+                float border = std::max(4.0f, pillowSlotSize.y * 0.08f);
                 float br = 0.36f, bg = 0.29f, bb = 0.23f, ba = 1.0f;
 
                 // top
-                Image::DrawRect(slot + vec2(0.0f, -slotHalf.y + border * 0.5f), vec2(pillowSlotSize.x, border), br, bg, bb, ba, 0.0f);
+                Image::DrawRect(slot + vec2(0.0f, slotHalf.y - border), vec2(slotHalf.x, border), br, bg, bb, ba, 0.0f);
                 // bottom
-                Image::DrawRect(slot + vec2(0.0f, slotHalf.y - border * 0.5f), vec2(pillowSlotSize.x, border), br, bg, bb, ba, 0.0f);
+                Image::DrawRect(slot + vec2(0.0f, -slotHalf.y + border), vec2(slotHalf.x, border), br, bg, bb, ba, 0.0f);
                 // left
-                Image::DrawRect(slot + vec2(-slotHalf.x + border * 0.5f, 0.0f), vec2(border, pillowSlotSize.y), br, bg, bb, ba, 0.0f);
+                Image::DrawRect(slot + vec2(-slotHalf.x + border, 0.0f), vec2(border, slotHalf.y), br, bg, bb, ba, 0.0f);
                 // right
-                Image::DrawRect(slot + vec2(slotHalf.x - border * 0.5f, 0.0f), vec2(border, pillowSlotSize.y), br, bg, bb, ba, 0.0f);
+                Image::DrawRect(slot + vec2(slotHalf.x - border, 0.0f), vec2(border, slotHalf.y), br, bg, bb, ba, 0.0f);
             }
 
             if (makeBed.draggingPillow == -1 && Mouse::IsPressed(0)) {
@@ -1200,6 +1210,7 @@ namespace Minigames {
 
             if (makeBed.pillowPlaced[0] && makeBed.pillowPlaced[1]) {
                 makeBed.phase = MakeBedPhase::PlaceBlanket;
+                makeBed.blanketHomePosition = layout.blanketHome;
                 makeBed.blanketPosition = makeBed.blanketHomePosition;
                 makeBed.blanketVelocity = vec2(0.0f);
                 makeBed.draggingBlanket = -1;
@@ -1252,7 +1263,8 @@ namespace Minigames {
             Image::DrawRect(blanketTarget, blanketTargetSize, 0.98f, 0.96f, 0.90f, 0.16f, 0.0f);
 
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket == -1) {
-                makeBed.blanketVelocity.y -= 1.15f * ::deltaTime;
+                makeBed.blanketHomePosition = layout.blanketHome;
+                makeBed.blanketVelocity.y -= 4.2f * ::deltaTime;
                 makeBed.blanketPosition.y += makeBed.blanketVelocity.y * 60.0f * ::deltaTime;
                 if (makeBed.blanketPosition.y < makeBed.blanketHomePosition.y) {
                     makeBed.blanketPosition.y = makeBed.blanketHomePosition.y;
@@ -1269,7 +1281,13 @@ namespace Minigames {
 
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket != -1) {
                 if (Mouse::IsDown(0)) {
-                    makeBed.blanketPosition = mouseUI + makeBed.blanketDragOffset;
+                    vec2 desired = mouseUI + makeBed.blanketDragOffset;
+                    makeBed.blanketPosition.x = desired.x;
+                    if (desired.y > makeBed.blanketHomePosition.y) {
+                        makeBed.blanketPosition.y = makeBed.blanketHomePosition.y + (desired.y - makeBed.blanketHomePosition.y) * 0.58f;
+                    } else {
+                        makeBed.blanketPosition.y = desired.y;
+                    }
                     makeBed.blanketVelocity = vec2(0.0f);
                 } else {
                     bool placed = BoxCollide(makeBed.blanketPosition, blanketDrawSize, blanketTarget, blanketTargetSize);
@@ -1278,7 +1296,7 @@ namespace Minigames {
                         makeBed.blanketPlaced = true;
                         makeBed.phase = MakeBedPhase::Won;
                     } else {
-                        makeBed.blanketVelocity = vec2(0.0f, -2.2f);
+                        makeBed.blanketVelocity = vec2(0.0f, -5.0f);
                     }
                     makeBed.draggingBlanket = -1;
                 }
@@ -1290,20 +1308,7 @@ namespace Minigames {
                 : 0;
 
             if (blanketTex != 0) {
-                int tw = 0, th = 0;
-                if (Image::GetTextureSize(blanketTex, tw, th) && tw > 0 && th > 0) {
-                    float aspect = static_cast<float>(tw) / static_cast<float>(th);
-                    float targetW = blanketDrawSize.x;
-                    float targetH = blanketDrawSize.y;
-                    if (targetW / targetH > aspect) {
-                        targetW = targetH * aspect;
-                    } else {
-                        targetH = targetW / aspect;
-                    }
-                    Image::Draw(blanketTex, makeBed.blanketPosition, vec2(targetW, targetH), 0.0f);
-                } else {
-                    Image::Draw(blanketTex, makeBed.blanketPosition, blanketDrawSize, 0.0f);
-                }
+                Image::Draw(blanketTex, makeBed.blanketPosition, blanketDrawSize, 0.0f);
             } else {
                 Image::DrawRect(makeBed.blanketPosition, blanketDrawSize, 0.55f, 0.38f, 0.28f, 1.0f, 0.0f);
             }
