@@ -118,6 +118,185 @@ struct TaskPositionOverride {
 const std::string taskPositionOverridesPath = "game/data/task_positions.dat";
 std::vector<TaskPositionOverride> taskPositionOverrides;
 
+struct Room1PhoneCallState {
+    bool armed = false;
+    bool answered = false;
+    float delaySeconds = 1.0f;
+    float shakeSeconds = 0.0f;
+    GLuint phoneTexture = 0;
+};
+
+Room1PhoneCallState room1PhoneCall;
+
+void CloseRoom1PhoneCall() {
+    room1PhoneCall.armed = false;
+    room1PhoneCall.answered = false;
+    room1PhoneCall.delaySeconds = 1.0f;
+    room1PhoneCall.shakeSeconds = 0.0f;
+    UI::RemoveMenu("room1-phone-popup");
+}
+
+void TriggerRoom1PhoneCall() {
+    if (room1PhoneCall.armed) {
+        return;
+    }
+
+    room1PhoneCall.armed = true;
+    room1PhoneCall.answered = false;
+    room1PhoneCall.delaySeconds = 1.0f;
+    room1PhoneCall.shakeSeconds = 0.0f;
+}
+
+Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) {
+    Menu* menu = UI::FindMenu("room1-phone-popup");
+    if (menu == nullptr) {
+        menu = &UI::CreateMenu("room1-phone-popup");
+    }
+
+    menu->panels.clear();
+    menu->images.clear();
+    menu->labels.clear();
+    menu->buttons.clear();
+
+    vec2 fullSize = screen / zoom;
+    vec2 popupHalf = vec2(fullSize.x * 0.46f, fullSize.y * 0.36f);
+
+    UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), vec2(10.0f), vec4(0.0f, 0.0f, 0.0f, 0.65f));
+    overlay.dynamicDim = [fullSize]() {
+        return fullSize;
+    };
+
+    UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", vec2(0.0f), vec2(100.0f), vec4(0.12f, 0.12f, 0.14f, 1.0f));
+    shadow.dynamicDim = [popupHalf]() {
+        return popupHalf + vec2(12.0f);
+    };
+
+    UiPanel& body = UI::AddPanel(*menu, "panel-body", vec2(0.0f), vec2(100.0f), vec4(0.96f, 0.96f, 0.98f, 1.0f));
+    body.dynamicDim = [popupHalf]() {
+        return popupHalf;
+    };
+
+    UiPanel& header = UI::AddPanel(*menu, "panel-header", vec2(0.0f), vec2(100.0f), vec4(0.18f, 0.18f, 0.22f, 1.0f));
+    header.dynamicPos = [popupHalf]() {
+        return vec2(0.0f, popupHalf.y - 46.0f);
+    };
+    header.dynamicDim = [popupHalf]() {
+        return vec2(popupHalf.x - 14.0f, 34.0f);
+    };
+
+    UiLabel& title = UI::AddLabel(*menu, "panel-title", "incoming call", vec2(0.0f), 24.0f / zoom, true);
+    title.dynamicPos = [popupHalf]() {
+        return vec2(0.0f, popupHalf.y - 56.0f);
+    };
+
+    Button& close = UI::AddButton(*menu, "panel-close", "x", vec2(0.0f), vec2(18.0f), 0);
+    close.labelSize = 18.0f / zoom;
+    close.labelSpacing = 2.4f;
+    close.fallbackColor = vec4(0.74f, 0.20f, 0.20f, 1.0f);
+    close.fallbackHoverColor = vec4(0.88f, 0.20f, 0.20f, 1.0f);
+    close.fallbackPressedColor = vec4(0.62f, 0.14f, 0.14f, 1.0f);
+    close.dynamicPos = [popupHalf]() {
+        return vec2(popupHalf.x - 30.0f, popupHalf.y - 30.0f);
+    };
+    close.onClick = []() {
+        CloseRoom1PhoneCall();
+    };
+
+    if (phoneTexture != 0) {
+        int phoneWidth = 0;
+        int phoneHeight = 0;
+        vec2 phoneSize = vec2(popupHalf.x * 0.42f, popupHalf.y * 0.92f);
+        if (Image::GetTextureSize(phoneTexture, phoneWidth, phoneHeight) && phoneWidth > 0 && phoneHeight > 0) {
+            float aspect = static_cast<float>(phoneWidth) / static_cast<float>(phoneHeight);
+            float maxWidth = popupHalf.x * 0.42f;
+            float maxHeight = popupHalf.y * 0.82f;
+            phoneSize = vec2(maxWidth, maxWidth / aspect);
+            if (phoneSize.y > maxHeight) {
+                phoneSize.y = maxHeight;
+                phoneSize.x = maxHeight * aspect;
+            }
+        }
+
+        UiImage& image = UI::AddImage(*menu, "phone-image", phoneTexture, vec2(0.0f, 26.0f), phoneSize);
+        image.dynamicPos = [phoneSize]() {
+            return vec2(0.0f, 26.0f);
+        };
+        image.dynamicDim = [phoneSize]() {
+            return phoneSize;
+        };
+    }
+
+    UiLabel& bodyLabel = UI::AddLabel(*menu, "phone-body-label", "click x to exit", vec2(0.0f, -popupHalf.y * 0.28f), 18.0f / zoom, true);
+    bodyLabel.dynamicPos = [popupHalf]() {
+        return vec2(0.0f, -popupHalf.y * 0.28f);
+    };
+
+    return menu;
+}
+
+void DrawRoom1PhoneCallOverlay(vec2 screen, float zoom, vec2 mouseUI, float deltaTime) {
+    if (!room1PhoneCall.armed) {
+        return;
+    }
+
+    if (!room1PhoneCall.answered) {
+        if (room1PhoneCall.delaySeconds > 0.0f) {
+            room1PhoneCall.delaySeconds -= deltaTime;
+            if (room1PhoneCall.delaySeconds > 0.0f) {
+                return;
+            }
+        }
+
+        room1PhoneCall.shakeSeconds += deltaTime;
+
+        vec2 phonePos = vec2(0.0f, 120.0f);
+        float shakeX = 10.0f * std::sin(room1PhoneCall.shakeSeconds * 28.0f);
+        float shakeY = 7.0f * std::cos(room1PhoneCall.shakeSeconds * 24.0f);
+        float shakeAngle = 0.06f * std::sin(room1PhoneCall.shakeSeconds * 18.0f);
+        vec2 phoneSize = vec2(screen.x * 0.28f, screen.y * 0.54f);
+        int phoneWidth = 0;
+        int phoneHeight = 0;
+        if (room1PhoneCall.phoneTexture != 0 && Image::GetTextureSize(room1PhoneCall.phoneTexture, phoneWidth, phoneHeight) && phoneWidth > 0 && phoneHeight > 0) {
+            float aspect = static_cast<float>(phoneWidth) / static_cast<float>(phoneHeight);
+            float maxHeight = screen.y * 0.58f;
+            float maxWidth = screen.x * 0.30f;
+            phoneSize = vec2(maxWidth, maxWidth / aspect);
+            if (phoneSize.y > maxHeight) {
+                phoneSize.y = maxHeight;
+                phoneSize.x = maxHeight * aspect;
+            }
+        }
+
+        if (room1PhoneCall.phoneTexture != 0) {
+            Image::Draw(room1PhoneCall.phoneTexture, phonePos + vec2(shakeX, shakeY), phoneSize, shakeAngle);
+        } else {
+            Image::DrawRect(phonePos + vec2(shakeX, shakeY), phoneSize, 0.10f, 0.10f, 0.10f, 1.0f, shakeAngle);
+        }
+
+        Text::DrawStringCentered(
+            "your getting a call click to answer",
+            vec2(0.0f, -screen.y * 0.28f),
+            20.0f / zoom,
+            1.7f
+        );
+
+        vec2 phoneHitPos = phonePos + vec2(shakeX, shakeY);
+        vec2 phoneHitSize = phoneSize;
+        if (Mouse::IsPressed(0) && BoxCollide(mouseUI, vec2(0.0f), phoneHitPos, phoneHitSize)) {
+            room1PhoneCall.answered = true;
+        }
+        return;
+    }
+
+    Menu* menu = EnsureRoom1PhonePopupUiMenu(screen, zoom, room1PhoneCall.phoneTexture);
+    if (menu != nullptr) {
+        menu->visible = true;
+        menu->enabled = true;
+        menu->update(mouseUI);
+        menu->draw();
+    }
+}
+
 bool TryGetTaskPositionOverride(int room, int taskId, const std::string& taskName, vec2& outPos) {
     if (!taskName.empty()) {
         for (const TaskPositionOverride& entry : taskPositionOverrides) {
@@ -1069,6 +1248,7 @@ int RunCommunityApp()
     int nextRoomId = 2;
 
     GLuint taskTex = Image::Load("assets/box.png");
+    room1PhoneCall.phoneTexture = Image::Load("assets/phone.png");
     GLuint treeTex = Image::Load("dist/assets/tree.png", false);
     if (treeTex == 0) {
         treeTex = Image::Load("assets/tree.png");
@@ -1868,6 +2048,9 @@ int RunCommunityApp()
                 if (completedCharacter != nullptr) {
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
                     completedCharacter->level = completedCharacter->tasksCompleted * 30;
+                    if (completedTask.room == 1 && completedCharacter->tasksCompleted == 1) {
+                        TriggerRoom1PhoneCall();
+                    }
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         completedCharacter->isRoaming = true;
                         spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
@@ -1887,6 +2070,11 @@ int RunCommunityApp()
             }
 
             Minigames::CloseTask();
+        }
+
+        if (room1PhoneCall.armed) {
+            vec2 mouseUI = GetMouseUI(window);
+            DrawRoom1PhoneCallOverlay(screen, zoom, mouseUI, static_cast<float>(deltaTime));
         }
 
         if (!running) {
