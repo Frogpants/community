@@ -578,7 +578,7 @@ void DrawRoom1PhoneCallOverlay(vec2 screen, float zoom, vec2 mouseUI, float delt
         }
 
         Text::DrawStringCentered(
-            "your getting a call click to answer",
+            "your senior is getting a call click to answer",
             vec2(0.0f, -screen.y * 0.28f),
             20.0f / zoom,
             1.7f
