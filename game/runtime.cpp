@@ -108,6 +108,21 @@ std::vector<Task> objectives;
 
 std::string gLocalPlayerName;
 
+const std::string goIntoRoomsNotificationMenuId = "go-into-rooms-notification";
+
+void SetGoIntoRoomsNotificationVisible(bool visible) {
+    Menu* menu = UI::FindMenu(goIntoRoomsNotificationMenuId);
+    if (menu == nullptr) {
+        return;
+    }
+
+    menu->visible = visible;
+    menu->enabled = visible;
+}
+
+void ShowGoIntoRoomsNotification() { SetGoIntoRoomsNotificationVisible(true); }
+void HideGoIntoRoomsNotification() { SetGoIntoRoomsNotificationVisible(false); }
+
 struct TaskPositionOverride {
     int room = 0;
     int taskId = 0;
@@ -1606,10 +1621,79 @@ int RunCommunityApp()
     };
     playMenuButton.onClick = [&]() {
         inMainMenu = false;
+        // Show a short notification telling the player to go into the rooms
+        ShowGoIntoRoomsNotification();
         if (!multiplayerStarted) {
             multiplayer.initOrJoin(requestedRoomCode);
             multiplayerStarted = true;
         }
+    };
+
+    // Create the 'go into rooms' notification menu (hidden by default)
+    Menu& goIntoMenu = UI::CreateMenu(goIntoRoomsNotificationMenuId);
+    goIntoMenu.visible = false;
+    goIntoMenu.enabled = false;
+
+    UiPanel& goIntoPanel = UI::AddPanel(
+        goIntoMenu,
+        "go-into-panel",
+        vec2(0.0f, 0.0f),
+        vec2(380.0f, 96.0f),
+        vec4(0.12f, 0.15f, 0.12f, 0.95f)
+    );
+    goIntoPanel.dynamicPos = [&]() {
+        return vec2(
+            screen.x / (2.0f * zoom) - 190.0f,
+            screen.y / (2.0f * zoom) - 60.0f
+        );
+    };
+
+    UI::AddLabel(
+        goIntoMenu,
+        "go-into-title",
+        "Explore the rooms",
+        vec2(0.0f, 0.0f),
+        22.0f / zoom,
+        true
+    ).dynamicPos = [&]() {
+        return vec2(
+            screen.x / (2.0f * zoom) - 20.0f,
+            screen.y / (2.0f * zoom) - 30.0f
+        );
+    };
+
+    UI::AddLabel(
+        goIntoMenu,
+        "go-into-body",
+        "Head into the rooms and check what's new",
+        vec2(0.0f, 0.0f),
+        12.0f / zoom,
+        true
+    ).dynamicPos = [&]() {
+        return vec2(
+            screen.x / (2.0f * zoom) - 20.0f,
+            screen.y / (2.0f * zoom) - 56.0f
+        );
+    };
+
+    Button& goIntoClose = UI::AddButton(
+        goIntoMenu,
+        "go-into-close",
+        "x",
+        vec2(0.0f, 0.0f),
+        vec2(24.0f, 24.0f),
+        0
+    );
+    goIntoClose.labelSize = 14.0f / zoom;
+    goIntoClose.fallbackColor = vec4(0.45f, 0.18f, 0.18f, 1.0f);
+    goIntoClose.dynamicPos = [&]() {
+        return vec2(
+            screen.x / (2.0f * zoom) + 150.0f - 36.0f,
+            screen.y / (2.0f * zoom) - 46.0f
+        );
+    };
+    goIntoClose.onClick = []() {
+        HideGoIntoRoomsNotification();
     };
 
     double lastFrameTime = glfwGetTime();
