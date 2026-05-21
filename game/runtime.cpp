@@ -123,6 +123,15 @@ void SetGoIntoRoomsNotificationVisible(bool visible) {
 void ShowGoIntoRoomsNotification() { SetGoIntoRoomsNotificationVisible(true); }
 void HideGoIntoRoomsNotification() { SetGoIntoRoomsNotificationVisible(false); }
 
+struct RoomUnlockNotificationState {
+    bool visible = false;
+    int activeRoom = -1;
+    int arrowRoom = -1;
+    std::vector<int> pendingRooms;
+};
+
+RoomUnlockNotificationState roomUnlockNotification;
+
 struct TaskPositionOverride {
     int room = 0;
     int taskId = 0;
@@ -370,6 +379,109 @@ void SelectRoom1PhoneAnswer(bool safeAnswer) {
     room1PhoneCall.questionIndex += 1;
     if (room1PhoneCall.questionIndex >= static_cast<int>(room1PhoneCall.questionOrder.size())) {
         FinishRoom1PhoneCall();
+    }
+}
+
+void DismissRoomUnlockNotification() {
+    roomUnlockNotification.visible = false;
+    roomUnlockNotification.activeRoom = -1;
+    UI::RemoveMenu("room-unlock-notification");
+}
+
+void QueueRoomUnlockNotification(int roomId) {
+    if (roomId < 2) {
+        return;
+    }
+
+    roomUnlockNotification.pendingRooms.push_back(roomId);
+    roomUnlockNotification.arrowRoom = roomId;
+}
+
+void ShowNextRoomUnlockNotification() {
+    if (roomUnlockNotification.visible || roomUnlockNotification.pendingRooms.empty()) {
+        return;
+    }
+
+    roomUnlockNotification.activeRoom = roomUnlockNotification.pendingRooms.front();
+    roomUnlockNotification.pendingRooms.erase(roomUnlockNotification.pendingRooms.begin());
+    roomUnlockNotification.visible = true;
+}
+
+Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
+    Menu* menu = UI::FindMenu("room-unlock-notification");
+    if (menu == nullptr) {
+        menu = &UI::CreateMenu("room-unlock-notification");
+    }
+
+    menu->panels.clear();
+    menu->images.clear();
+    menu->labels.clear();
+    menu->buttons.clear();
+
+    vec2 fullSize = screen / zoom;
+    vec2 popupHalf = vec2(
+        std::min(fullSize.x * 0.48f, 540.0f),
+        156.0f
+    );
+
+    UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), fullSize, vec4(0.0f, 0.0f, 0.0f, 0.12f));
+    overlay.dynamicDim = [fullSize]() {
+        return fullSize;
+    };
+
+    UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", vec2(7.0f, -7.0f), popupHalf, vec4(0.22f, 0.25f, 0.20f, 0.35f));
+    shadow.dynamicDim = [popupHalf]() {
+        return popupHalf;
+    };
+
+    UiPanel& body = UI::AddPanel(*menu, "panel-body", vec2(0.0f), popupHalf, vec4(0.88f, 0.93f, 0.82f, 1.0f));
+    body.dynamicDim = [popupHalf]() {
+        return popupHalf;
+    };
+
+    UiPanel& header = UI::AddPanel(*menu, "panel-highlight", vec2(0.0f, popupHalf.y - 18.0f), vec2(popupHalf.x - 18.0f, 9.0f), vec4(0.39f, 0.55f, 0.35f, 1.0f));
+    header.dynamicPos = [popupHalf]() {
+        return vec2(0.0f, popupHalf.y - 18.0f);
+    };
+    header.dynamicDim = [popupHalf]() {
+        return vec2(popupHalf.x - 18.0f, 9.0f);
+    };
+
+    std::string titleText = "room " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
+    UiLabel& title = UI::AddLabel(*menu, "message-line-1", titleText, vec2(0.0f, 48.0f), 22.0f / zoom, true);
+    title.spacing = 1.7f;
+
+    UiLabel& instruction = UI::AddLabel(*menu, "message-line-2", "go to the next house on the right", vec2(0.0f, 12.0f), 18.0f / zoom, true);
+    instruction.spacing = 1.7f;
+
+    UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "and click e to enter", vec2(0.0f, -18.0f), 17.0f / zoom, true);
+    detail.spacing = 1.7f;
+
+    Button& ok = UI::AddButton(*menu, "ok", "ok", vec2(0.0f, -74.0f), vec2(88.0f, 32.0f), 0);
+    ok.labelSize = 16.0f / zoom;
+    ok.labelSpacing = 2.0f;
+    ok.fallbackColor = vec4(0.39f, 0.55f, 0.35f, 1.0f);
+    ok.fallbackHoverColor = vec4(0.47f, 0.63f, 0.41f, 1.0f);
+    ok.fallbackPressedColor = vec4(0.30f, 0.43f, 0.27f, 1.0f);
+    ok.onClick = []() {
+        DismissRoomUnlockNotification();
+    };
+
+    return menu;
+}
+
+void DrawRoomUnlockNotification(vec2 screen, float zoom, vec2 mouseUI) {
+    if (!roomUnlockNotification.visible) {
+        UI::RemoveMenu("room-unlock-notification");
+        return;
+    }
+
+    Menu* menu = EnsureRoomUnlockNotificationUiMenu(screen, zoom);
+    if (menu != nullptr) {
+        menu->visible = true;
+        menu->enabled = true;
+        menu->update(mouseUI);
+        menu->draw();
     }
 }
 
@@ -703,6 +815,40 @@ struct Door {
     int roomId = 0;
 };
 
+void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
+    if (player.room != 0 || roomUnlockNotification.arrowRoom < 2) {
+        return;
+    }
+
+    const Door* targetDoor = nullptr;
+    for (const Door& door : doors) {
+        if (door.roomId == roomUnlockNotification.arrowRoom) {
+            targetDoor = &door;
+            break;
+        }
+    }
+
+    if (targetDoor == nullptr) {
+        return;
+    }
+
+    vec2 arrowTip = targetDoor->hubPos + vec2(0.0f, targetDoor->dim.y + 24.0f + 8.0f * std::sin(timer * 0.12f));
+    vec2 arrowTop = arrowTip + vec2(0.0f, 86.0f);
+    vec2 stemCenter = arrowTip + vec2(0.0f, 54.0f);
+
+    Image::DrawRect(stemCenter, vec2(8.0f, 30.0f), 0.62f, 0.12f, 0.10f, 1.0f, 0.0f);
+
+    glPushMatrix();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glColor4f(0.62f, 0.12f, 0.10f, 1.0f);
+    glBegin(GL_TRIANGLES);
+        glVertex2f(arrowTip.x, arrowTip.y);
+        glVertex2f(arrowTop.x - 24.0f, arrowTop.y - 36.0f);
+        glVertex2f(arrowTop.x + 24.0f, arrowTop.y - 36.0f);
+    glEnd();
+    glPopMatrix();
+}
+
 std::vector<std::string> loadTileLibrary() {
     std::vector<std::string> files = grabFiles("dist/assets/tiles");
     std::vector<std::string> townFiles = grabFiles("dist/assets/town");
@@ -1010,9 +1156,9 @@ Character* getCharacterForRoom(std::vector<Character>& chars, int roomId) {
     return nullptr;
 }
 
-void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int& nextRoomId, Character& completedCharacter, const std::vector<vec2>& hubDoorPositions) {
+int spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int& nextRoomId, Character& completedCharacter, const std::vector<vec2>& hubDoorPositions) {
     if (completedCharacter.nextStageSpawned) {
-        return;
+        return -1;
     }
 
     const int roomId = nextRoomId;
@@ -1020,7 +1166,7 @@ void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int
     if (roomId - 1 < 0 || roomId - 1 >= static_cast<int>(hubDoorPositions.size())) {
         std::cout << "no more identifiable houses for another door" << std::endl;
         completedCharacter.nextStageSpawned = true;
-        return;
+        return -1;
     }
 
     nextRoomId += 1;
@@ -1029,6 +1175,7 @@ void spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int
     chars.push_back(makeCharacterForRoom(roomId, roomId - 1));
     chars.back().texture = Image::Load("assets/npcs/character.png");
     completedCharacter.nextStageSpawned = true;
+    return roomId;
 }
 
 void drawTreeSpawnMarkerTile(const vec2& pos)
@@ -2082,7 +2229,9 @@ int RunCommunityApp()
                 camera.target = player.pos;
                 camera.follow();
 
-                if (!Minigames::IsTaskOpen()) {
+                bool modalOpen = Minigames::IsTaskOpen() || roomUnlockNotification.visible;
+
+                if (!modalOpen) {
                     player.controls(frameScale);
                     vec2 oldPlayerPos = player.pos;
                     player.pos = moveWithCollisionMarkers(player.pos, player.dim, player.vel * frameScale, player.room, tiles);
@@ -2097,7 +2246,7 @@ int RunCommunityApp()
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
 
-                if (!Minigames::IsTaskOpen() && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
+                if (!modalOpen && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
                     if (currentCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
                     } else if (addTaskForCharacter(*currentCharacter, player)) {
@@ -2108,36 +2257,44 @@ int RunCommunityApp()
                 }
 
                 // Check for outside trash dropoff before handling door transitions
-                Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
+                if (!modalOpen) {
+                    Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
+                }
 
-                for (const Door& door : doors) {
-                    vec2 doorPos = vec2(-999999.0f);
-                    if (player.room == 0) {
-                        doorPos = door.hubPos;
-                    } else if (player.room == door.roomId) {
-                        doorPos = door.roomPos;
-                    }
+                if (!modalOpen) {
+                    for (const Door& door : doors) {
+                        vec2 doorPos = vec2(-999999.0f);
+                        if (player.room == 0) {
+                            doorPos = door.hubPos;
+                        } else if (player.room == door.roomId) {
+                            doorPos = door.roomPos;
+                        }
 
-                    if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
-                        if (Input::IsPressed("e")) {
-                            if (player.room == 0) {
-                                roomReturnPositions[door.roomId] = player.pos;
-                                player.room = door.roomId;
-                                player.pos = door.roomPos;
-                                camera.pos = player.pos;
-                                camera.target = player.pos;
-                            } else {
-                                player.room = 0;
-                                auto returnPos = roomReturnPositions.find(door.roomId);
-                                if (returnPos != roomReturnPositions.end()) {
-                                    player.pos = returnPos->second;
+                        if (doorPos.x > -999998.0f && BoxCollide(player.pos, player.dim, doorPos, door.dim)) {
+                            if (Input::IsPressed("e")) {
+                                if (player.room == 0) {
+                                    roomReturnPositions[door.roomId] = player.pos;
+                                    player.room = door.roomId;
+                                    player.pos = door.roomPos;
+                                    camera.pos = player.pos;
+                                    camera.target = player.pos;
+                                    if (roomUnlockNotification.arrowRoom == door.roomId) {
+                                        roomUnlockNotification.arrowRoom = -1;
+                                    }
                                 } else {
-                                    player.pos = door.hubPos;
+                                    player.room = 0;
+                                    auto returnPos = roomReturnPositions.find(door.roomId);
+                                    if (returnPos != roomReturnPositions.end()) {
+                                        player.pos = returnPos->second;
+                                    } else {
+                                        player.pos = door.hubPos;
+                                    }
+                                    camera.pos = player.pos;
+                                    camera.target = player.pos;
+                                    ShowNextRoomUnlockNotification();
                                 }
-                                camera.pos = player.pos;
-                                camera.target = player.pos;
+                                break;
                             }
-                            break;
                         }
                     }
                 }
@@ -2174,7 +2331,7 @@ int RunCommunityApp()
             vec2 exclamationPos = t.pos + vec2(0.0f, t.dim.y + exclamationBob);
             Text::DrawStringCentered("!", exclamationPos, 18.0f, 1.0f);
 
-            if (!Minigames::IsTaskOpen() && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
+            if (!Minigames::IsTaskOpen() && !roomUnlockNotification.visible && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
                 Minigames::OpenTask(id, t.name, t.room);
             }
             ++id;
@@ -2199,6 +2356,7 @@ int RunCommunityApp()
         }
 
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
+        DrawRoomUnlockArrow(doors, static_cast<float>(timer));
 
         // Update animation timer using real deltaTime
         playerAnimTimer += deltaTime;
@@ -2383,7 +2541,11 @@ int RunCommunityApp()
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         completedCharacter->isRoaming = true;
                         spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
-                        spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
+                        int unlockedRoom = spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
+                        QueueRoomUnlockNotification(unlockedRoom);
+                        if (player.room == 0) {
+                            ShowNextRoomUnlockNotification();
+                        }
                     }
                 }
 
@@ -2404,6 +2566,11 @@ int RunCommunityApp()
         if (room1PhoneCall.armed) {
             vec2 mouseUI = GetMouseUI(window);
             DrawRoom1PhoneCallOverlay(screen, zoom, mouseUI, static_cast<float>(deltaTime));
+        }
+
+        if (roomUnlockNotification.visible) {
+            vec2 mouseUI = GetMouseUI(window);
+            DrawRoomUnlockNotification(screen, zoom, mouseUI);
         }
 
         if (!running) {
