@@ -1598,6 +1598,9 @@ int RunCommunityApp()
                     }
                 }
 
+                // Check for outside trash dropoff before handling door transitions
+                Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
+
                 for (const Door& door : doors) {
                     vec2 doorPos = vec2(-999999.0f);
                     if (player.room == 0) {
@@ -1639,7 +1642,7 @@ int RunCommunityApp()
                     }
                 }
 
-                Minigames::TryTakeOutTrashOutsideDropoff(player.pos, player.dim, player.room, Input::IsPressed("e"));
+                
 
                 Image::Draw(selectTex, snap(mouse + 32, 64.0), 32);
             }

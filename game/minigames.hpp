@@ -373,10 +373,11 @@ namespace Minigames {
         layout.pillowHomes[0] = layout.bedCenter + vec2(-layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
         layout.pillowHomes[1] = layout.bedCenter + vec2(layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
 
-        // Make the blanket larger while keeping room to clamp it inside the popup panel.
-        layout.blanketDrawSize = vec2(layout.bedSize.x * 0.78f, layout.bedSize.y * 0.58f);
-        // Start the blanket a little below the popup so players pull it into view.
-        layout.blanketHome = vec2(0.0f, -panelHalf.y + layout.blanketDrawSize.y - 20.0f);
+        // Make the blanket much larger so it covers more of the bed.
+        layout.blanketDrawSize = vec2(layout.bedSize.x * 1.10f, layout.bedSize.y * 0.84f);
+        // Start the blanket lower on the panel so it begins further from the completion line.
+        float blanketCenterY = -panelHalf.y + (layout.blanketDrawSize.y * 0.40f);
+        layout.blanketHome = vec2(0.0f, blanketCenterY);
         // Place the blanket target higher on the bed.
         layout.blanketTarget = layout.bedCenter + vec2(0.0f, layout.bedSize.y * 0.10f);
         // Make the target area larger.
@@ -1267,9 +1268,10 @@ namespace Minigames {
             }
 
             Image::DrawRect(blanketTarget, blanketTargetSize, 0.98f, 0.96f, 0.90f, 0.16f, 0.0f);
-            // Draw a larger guide line right below the pillows.
-            float guideHeight = 16.0f;
+            // Draw a thinner guide line much lower so the blanket starts visibly below it.
+            float guideHeight = 8.0f;
             float pillowBottomY = std::min(pillowSlots[0].y - pillowSlotSize.y, pillowSlots[1].y - pillowSlotSize.y);
+            // Position the completion line just under the pillow slots.
             vec2 guidePos = vec2(0.0f, pillowBottomY - 6.0f);
             Image::DrawRect(guidePos, vec2(blanketTargetSize.x * 1.08f, guideHeight), 0.92f, 0.88f, 0.75f, 1.0f, 0.0f);
 
@@ -1339,8 +1341,6 @@ namespace Minigames {
             }
             glDisable(GL_SCISSOR_TEST);
 
-            // Draw the instruction text lower so the blanket can start lower and make sense visually
-            Text::DrawStringCentered("drag blanket to this line", guidePos + vec2(0.0f, -40.0f), 14.0f / zoom, 1.4f);
         }
 
         if (makeBed.phase == MakeBedPhase::Won) {
