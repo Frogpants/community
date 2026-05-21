@@ -453,17 +453,26 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
     }
 
     if (room1PhoneCall.finished) {
-        const std::string resultText = room1PhoneCall.playerScammed
-            ? "you got scammed"
-            : "congrats you stoped your senior from getting scammed, phew!";
-        UiLabel& result = UI::AddLabel(*menu, "phone-result", resultText, vec2(0.0f, 20.0f), 22.0f / zoom, true);
-        result.dynamicPos = []() {
-            return vec2(0.0f, 28.0f);
-        };
+        if (room1PhoneCall.playerScammed) {
+            UiLabel& result = UI::AddLabel(*menu, "phone-result", "you got scammed", vec2(0.0f, 20.0f), 22.0f / zoom, true);
+            result.dynamicPos = []() {
+                return vec2(0.0f, 28.0f);
+            };
+        } else {
+            UiLabel& resultLine1 = UI::AddLabel(*menu, "phone-result-line-1", "congrats you stoped your senior", vec2(0.0f, 20.0f), 20.0f / zoom, true);
+            resultLine1.dynamicPos = []() {
+                return vec2(0.0f, 48.0f);
+            };
+
+            UiLabel& resultLine2 = UI::AddLabel(*menu, "phone-result-line-2", "from getting scammed, phew!", vec2(0.0f, 20.0f), 20.0f / zoom, true);
+            resultLine2.dynamicPos = []() {
+                return vec2(0.0f, 12.0f);
+            };
+        }
 
         const std::string detailText = room1PhoneCall.playerScammed
-            ? "redo one completed task to recover"
-            : "the scammer gave up";
+            ? "you got " + std::to_string(room1PhoneCall.wrongAnswers) + " incorrect. redo one completed task to recover"
+            : "you got " + std::to_string(room1PhoneCall.wrongAnswers) + " incorrect. the scammer gave up";
         UiLabel& detail = UI::AddLabel(*menu, "phone-result-detail", detailText, vec2(0.0f, -38.0f), 16.0f / zoom, true);
         detail.dynamicPos = []() {
             return vec2(0.0f, -38.0f);
@@ -487,26 +496,25 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
     UiLabel& progress = UI::AddLabel(
         *menu,
         "phone-progress",
-        "question " + std::to_string(orderIndex + 1) + " of " + std::to_string(room1PhoneCall.questionOrder.size()) +
-            "  wrong " + std::to_string(room1PhoneCall.wrongAnswers) + "/2",
+        "question " + std::to_string(orderIndex + 1) + " of " + std::to_string(room1PhoneCall.questionOrder.size()),
         vec2(0.0f, 0.0f),
         15.0f / zoom,
         true
     );
     progress.dynamicPos = [popupHalf]() {
-        return vec2(0.0f, popupHalf.y - 96.0f);
+        return vec2(0.0f, popupHalf.y - 138.0f);
     };
 
     UiLabel& bodyLabel = UI::AddLabel(*menu, "phone-body-label", question.scammerLine, vec2(0.0f, 0.0f), 16.0f / zoom, true);
     bodyLabel.dynamicPos = []() {
-        return vec2(70.0f, 118.0f);
+        return vec2(70.0f, 82.0f);
     };
 
     const std::vector<std::string> letters = {"A", "B", "C", "D"};
     const std::vector<int>& answerOrder = room1PhoneCall.answerOrders[orderIndex];
     for (int i = 0; i < static_cast<int>(answerOrder.size()); ++i) {
         int answerIndex = answerOrder[i];
-        float y = 56.0f - static_cast<float>(i) * 58.0f;
+        float y = 22.0f - static_cast<float>(i) * 58.0f;
         Button& answerButton = UI::AddButton(*menu, "phone-answer-" + std::to_string(i), letters[i], vec2(0.0f), vec2(24.0f, 22.0f), 0);
         answerButton.labelSize = 15.0f / zoom;
         answerButton.labelSpacing = 1.8f;
