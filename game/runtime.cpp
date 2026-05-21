@@ -107,6 +107,7 @@ std::vector<Character> characters;
 std::vector<Task> objectives;
 
 std::string gLocalPlayerName;
+const int taskLevelIncrease = 20;
 
 const std::string goIntoRoomsNotificationMenuId = "go-into-rooms-notification";
 
@@ -125,8 +126,14 @@ void HideGoIntoRoomsNotification() { SetGoIntoRoomsNotificationVisible(false); }
 
 struct RoomUnlockNotificationState {
     bool visible = false;
+    bool tutorialActive = false;
+    bool seniorTutorialActive = false;
+    bool seniorTutorialShown = false;
+    bool taskTutorialActive = false;
+    bool taskTutorialShown = false;
     int activeRoom = -1;
     int arrowRoom = -1;
+    int npcArrowRoom = -1;
     std::vector<int> pendingRooms;
 };
 
@@ -384,8 +391,43 @@ void SelectRoom1PhoneAnswer(bool safeAnswer) {
 
 void DismissRoomUnlockNotification() {
     roomUnlockNotification.visible = false;
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = false;
+    roomUnlockNotification.taskTutorialActive = false;
     roomUnlockNotification.activeRoom = -1;
     UI::RemoveMenu("room-unlock-notification");
+}
+
+void ShowTutorialNotification() {
+    roomUnlockNotification.visible = true;
+    roomUnlockNotification.tutorialActive = true;
+    roomUnlockNotification.activeRoom = 1;
+    roomUnlockNotification.arrowRoom = 1;
+}
+
+void ShowSeniorTutorialNotification(int roomId) {
+    if (roomUnlockNotification.seniorTutorialShown) {
+        return;
+    }
+
+    roomUnlockNotification.visible = true;
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = true;
+    roomUnlockNotification.seniorTutorialShown = true;
+    roomUnlockNotification.activeRoom = roomId;
+    roomUnlockNotification.npcArrowRoom = roomId;
+}
+
+void ShowTaskTutorialNotification() {
+    if (roomUnlockNotification.taskTutorialShown) {
+        return;
+    }
+
+    roomUnlockNotification.visible = true;
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = false;
+    roomUnlockNotification.taskTutorialActive = true;
+    roomUnlockNotification.taskTutorialShown = true;
 }
 
 void QueueRoomUnlockNotification(int roomId) {
@@ -404,6 +446,9 @@ void ShowNextRoomUnlockNotification() {
 
     roomUnlockNotification.activeRoom = roomUnlockNotification.pendingRooms.front();
     roomUnlockNotification.pendingRooms.erase(roomUnlockNotification.pendingRooms.begin());
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = false;
+    roomUnlockNotification.taskTutorialActive = false;
     roomUnlockNotification.visible = true;
 }
 
@@ -447,15 +492,37 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         return vec2(popupHalf.x - 18.0f, 9.0f);
     };
 
-    std::string titleText = "room " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
-    UiLabel& title = UI::AddLabel(*menu, "message-line-1", titleText, vec2(0.0f, 48.0f), 22.0f / zoom, true);
-    title.spacing = 1.7f;
+    if (roomUnlockNotification.tutorialActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "welcome enter house 1 to begin", vec2(0.0f, 28.0f), 21.0f / zoom, true);
+        title.spacing = 1.7f;
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "click e to interact", vec2(0.0f, -8.0f), 18.0f / zoom, true);
+        detail.spacing = 1.7f;
+    } else if (roomUnlockNotification.seniorTutorialActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "talk to your senior to find tasks", vec2(0.0f, 36.0f), 19.0f / zoom, true);
+        title.spacing = 1.7f;
 
-    UiLabel& instruction = UI::AddLabel(*menu, "message-line-2", "go to the next house on the right", vec2(0.0f, 12.0f), 18.0f / zoom, true);
-    instruction.spacing = 1.7f;
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-2", "to help them with", vec2(0.0f, 4.0f), 19.0f / zoom, true);
+        instruction.spacing = 1.7f;
 
-    UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "and click e to enter", vec2(0.0f, -18.0f), 17.0f / zoom, true);
-    detail.spacing = 1.7f;
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "click e to interact", vec2(0.0f, -28.0f), 17.0f / zoom, true);
+        detail.spacing = 1.7f;
+    } else if (roomUnlockNotification.taskTutorialActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "click e on the highlighted tasks", vec2(0.0f, 18.0f), 19.0f / zoom, true);
+        title.spacing = 1.7f;
+
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "to complete them", vec2(0.0f, -16.0f), 19.0f / zoom, true);
+        detail.spacing = 1.7f;
+    } else {
+        std::string titleText = "room " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", titleText, vec2(0.0f, 48.0f), 22.0f / zoom, true);
+        title.spacing = 1.7f;
+
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-2", "go to the next house on the right", vec2(0.0f, 12.0f), 18.0f / zoom, true);
+        instruction.spacing = 1.7f;
+
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "and click e to enter", vec2(0.0f, -18.0f), 17.0f / zoom, true);
+        detail.spacing = 1.7f;
+    }
 
     Button& ok = UI::AddButton(*menu, "ok", "ok", vec2(0.0f, -74.0f), vec2(88.0f, 32.0f), 0);
     ok.labelSize = 16.0f / zoom;
@@ -816,7 +883,7 @@ struct Door {
 };
 
 void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
-    if (player.room != 0 || roomUnlockNotification.arrowRoom < 2) {
+    if (player.room != 0 || roomUnlockNotification.arrowRoom < 1) {
         return;
     }
 
@@ -832,7 +899,8 @@ void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
         return;
     }
 
-    vec2 arrowTip = targetDoor->hubPos + vec2(0.0f, targetDoor->dim.y + 24.0f + 8.0f * std::sin(timer * 0.12f));
+    float arrowBob = 6.0f * std::sin(timer * 4.0f);
+    vec2 arrowTip = targetDoor->hubPos + vec2(0.0f, targetDoor->dim.y + 24.0f + arrowBob);
     vec2 arrowTop = arrowTip + vec2(0.0f, 86.0f);
     vec2 stemCenter = arrowTip + vec2(0.0f, 54.0f);
 
@@ -845,6 +913,41 @@ void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
         glVertex2f(arrowTip.x, arrowTip.y);
         glVertex2f(arrowTop.x - 24.0f, arrowTop.y - 36.0f);
         glVertex2f(arrowTop.x + 24.0f, arrowTop.y - 36.0f);
+    glEnd();
+    glPopMatrix();
+}
+
+void DrawSeniorInteractArrow(const std::vector<Character>& chars, float timer) {
+    if (player.room != roomUnlockNotification.npcArrowRoom || roomUnlockNotification.npcArrowRoom < 1) {
+        return;
+    }
+
+    const Character* targetCharacter = nullptr;
+    for (const Character& character : chars) {
+        if (character.room == roomUnlockNotification.npcArrowRoom) {
+            targetCharacter = &character;
+            break;
+        }
+    }
+
+    if (targetCharacter == nullptr) {
+        return;
+    }
+
+    float arrowBob = 6.0f * std::sin(timer * 4.0f);
+    vec2 arrowTip = targetCharacter->pos + vec2(0.0f, targetCharacter->dim.y + 30.0f + arrowBob);
+    vec2 arrowTop = arrowTip + vec2(0.0f, 76.0f);
+    vec2 stemCenter = arrowTip + vec2(0.0f, 48.0f);
+
+    Image::DrawRect(stemCenter, vec2(8.0f, 26.0f), 0.62f, 0.12f, 0.10f, 1.0f, 0.0f);
+
+    glPushMatrix();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glColor4f(0.62f, 0.12f, 0.10f, 1.0f);
+    glBegin(GL_TRIANGLES);
+        glVertex2f(arrowTip.x, arrowTip.y);
+        glVertex2f(arrowTop.x - 22.0f, arrowTop.y - 34.0f);
+        glVertex2f(arrowTop.x + 22.0f, arrowTop.y - 34.0f);
     glEnd();
     glPopMatrix();
 }
@@ -1424,7 +1527,7 @@ bool ReopenCompletedTask(int room, int taskId, const std::string& taskName) {
 
     character->tasksCompleted = std::max(0, character->tasksCompleted - 1);
     character->tasksGiven = std::max(character->tasksGiven, taskId + 1);
-    character->level = character->tasksCompleted * 30;
+    character->level = character->tasksCompleted * taskLevelIncrease;
     character->isRoaming = false;
 
     EnsureObjectiveExists(*character, taskId);
@@ -1529,7 +1632,7 @@ void ApplyRemoteTaskProgressState(const std::string& serializedState,
         }
 
         character->tasksGiven = std::max(character->tasksGiven, character->tasksCompleted);
-        character->level = character->tasksCompleted * 30;
+        character->level = character->tasksCompleted * taskLevelIncrease;
 
         RemoveCompletedObjectivesForRoom(character->room, character->tasksCompleted);
         for (int taskId = character->tasksCompleted; taskId < character->tasksGiven; ++taskId) {
@@ -1776,6 +1879,7 @@ int RunCommunityApp()
     };
     playMenuButton.onClick = [&]() {
         inMainMenu = false;
+        ShowTutorialNotification();
         if (!multiplayerStarted) {
             multiplayer.initOrJoin(requestedRoomCode);
             multiplayerStarted = true;
@@ -2247,10 +2351,14 @@ int RunCommunityApp()
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
 
                 if (!modalOpen && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
+                    if (roomUnlockNotification.npcArrowRoom == currentCharacter->room) {
+                        roomUnlockNotification.npcArrowRoom = -1;
+                    }
                     if (currentCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
                     } else if (addTaskForCharacter(*currentCharacter, player)) {
                         std::cout << "Task added: " << player.tasks.back() << std::endl;
+                        ShowTaskTutorialNotification();
                     } else {
                         std::cout << "All tasks completed. No more tasks available." << std::endl;
                     }
@@ -2280,6 +2388,9 @@ int RunCommunityApp()
                                     camera.target = player.pos;
                                     if (roomUnlockNotification.arrowRoom == door.roomId) {
                                         roomUnlockNotification.arrowRoom = -1;
+                                    }
+                                    if (door.roomId == 1) {
+                                        ShowSeniorTutorialNotification(door.roomId);
                                     }
                                 } else {
                                     player.room = 0;
@@ -2357,6 +2468,7 @@ int RunCommunityApp()
 
         Minigames::DrawTakeOutTrashWorldPrompt(player.room, zoom);
         DrawRoomUnlockArrow(doors, static_cast<float>(timer));
+        DrawSeniorInteractArrow(characters, static_cast<float>(timer));
 
         // Update animation timer using real deltaTime
         playerAnimTimer += deltaTime;
@@ -2406,9 +2518,6 @@ int RunCommunityApp()
             }
             Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
-
-        std::string levelText = "level " + std::to_string(uiLevel);
-        Text::DrawString(levelText, vec2(-screen.x + 40, screen.y - 130) / zoom, 24.0f / zoom, 1.5f);
 
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
@@ -2534,7 +2643,7 @@ int RunCommunityApp()
 
                 if (completedCharacter != nullptr) {
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
-                    completedCharacter->level = completedCharacter->tasksCompleted * 30;
+                    completedCharacter->level = completedCharacter->tasksCompleted * taskLevelIncrease;
                     if (completedTask.room == 1 && completedCharacter->tasksCompleted == 1) {
                         TriggerRoom1PhoneCall(completedTask);
                     }
