@@ -121,30 +121,136 @@ std::vector<TaskPositionOverride> taskPositionOverrides;
 struct Room1PhoneCallState {
     bool armed = false;
     bool answered = false;
+    bool triggeredOnce = false;
+    bool finished = false;
+    bool playerScammed = false;
     float delaySeconds = 1.0f;
     float shakeSeconds = 0.0f;
     GLuint phoneTexture = 0;
+    int questionIndex = 0;
+    int wrongAnswers = 0;
+    int redoTaskRoom = 1;
+    int redoTaskId = -1;
+    std::string redoTaskName;
 };
 
 Room1PhoneCallState room1PhoneCall;
 
+struct ScamCallAnswer {
+    std::string text;
+    bool safe = true;
+};
+
+struct ScamCallQuestion {
+    std::string scammerLine;
+    std::vector<ScamCallAnswer> answers;
+};
+
+const std::vector<ScamCallQuestion> scamCallQuestions = {
+    {
+        "Scammer: Hi, this is your bank. What is your account pin?",
+        {
+            {"I cannot share my pin.", true},
+            {"I will call the bank back myself.", true},
+            {"Please stop calling this number.", true},
+            {"My pin is 1234.", false}
+        }
+    },
+    {
+        "Scammer: We need your senior's Social Security number now.",
+        {
+            {"No, that is private information.", true},
+            {"I will ask a trusted family member first.", true},
+            {"Real companies do not demand that by phone.", true},
+            {"Sure, I can read it to you.", false}
+        }
+    },
+    {
+        "Scammer: Buy gift cards to fix this urgent problem.",
+        {
+            {"Gift cards are not for bills.", true},
+            {"I am hanging up and checking the account.", true},
+            {"I will report this call.", true},
+            {"Okay, I will buy them right now.", false}
+        }
+    },
+    {
+        "Scammer: Tell me the code we just texted you.",
+        {
+            {"No, verification codes stay private.", true},
+            {"I did not request a code, so this is suspicious.", true},
+            {"I will contact the company directly.", true},
+            {"The code is 884201.", false}
+        }
+    },
+    {
+        "Scammer: Click this link so we can secure the computer.",
+        {
+            {"No links from random callers.", true},
+            {"I will use the official website instead.", true},
+            {"I am ending this call.", true},
+            {"Send it over, I will click it.", false}
+        }
+    }
+};
+
+bool ReopenCompletedTask(int room, int taskId, const std::string& taskName);
+
 void CloseRoom1PhoneCall() {
     room1PhoneCall.armed = false;
     room1PhoneCall.answered = false;
+    room1PhoneCall.finished = false;
+    room1PhoneCall.playerScammed = false;
     room1PhoneCall.delaySeconds = 1.0f;
     room1PhoneCall.shakeSeconds = 0.0f;
+    room1PhoneCall.questionIndex = 0;
+    room1PhoneCall.wrongAnswers = 0;
+    room1PhoneCall.redoTaskRoom = 1;
+    room1PhoneCall.redoTaskId = -1;
+    room1PhoneCall.redoTaskName.clear();
     UI::RemoveMenu("room1-phone-popup");
 }
 
-void TriggerRoom1PhoneCall() {
-    if (room1PhoneCall.armed) {
+void TriggerRoom1PhoneCall(const Task& completedTask) {
+    if (room1PhoneCall.armed || room1PhoneCall.triggeredOnce) {
         return;
     }
 
     room1PhoneCall.armed = true;
     room1PhoneCall.answered = false;
+    room1PhoneCall.triggeredOnce = true;
+    room1PhoneCall.finished = false;
+    room1PhoneCall.playerScammed = false;
     room1PhoneCall.delaySeconds = 1.0f;
     room1PhoneCall.shakeSeconds = 0.0f;
+    room1PhoneCall.questionIndex = 0;
+    room1PhoneCall.wrongAnswers = 0;
+    room1PhoneCall.redoTaskRoom = completedTask.room;
+    room1PhoneCall.redoTaskId = completedTask.id;
+    room1PhoneCall.redoTaskName = completedTask.name;
+}
+
+void FinishRoom1PhoneCall() {
+    room1PhoneCall.finished = true;
+    room1PhoneCall.playerScammed = room1PhoneCall.wrongAnswers >= 2;
+    if (room1PhoneCall.playerScammed) {
+        ReopenCompletedTask(room1PhoneCall.redoTaskRoom, room1PhoneCall.redoTaskId, room1PhoneCall.redoTaskName);
+    }
+}
+
+void SelectRoom1PhoneAnswer(bool safeAnswer) {
+    if (room1PhoneCall.finished) {
+        return;
+    }
+
+    if (!safeAnswer) {
+        room1PhoneCall.wrongAnswers += 1;
+    }
+
+    room1PhoneCall.questionIndex += 1;
+    if (room1PhoneCall.questionIndex >= static_cast<int>(scamCallQuestions.size())) {
+        FinishRoom1PhoneCall();
+    }
 }
 
 Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) {
@@ -159,7 +265,7 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
     menu->buttons.clear();
 
     vec2 fullSize = screen / zoom;
-    vec2 popupHalf = vec2(fullSize.x * 0.46f, fullSize.y * 0.36f);
+    vec2 popupHalf = vec2(fullSize.x * 0.58f, fullSize.y * 0.46f);
 
     UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), vec2(10.0f), vec4(0.0f, 0.0f, 0.0f, 0.65f));
     overlay.dynamicDim = [fullSize]() {
@@ -184,7 +290,7 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
         return vec2(popupHalf.x - 14.0f, 34.0f);
     };
 
-    UiLabel& title = UI::AddLabel(*menu, "panel-title", "incoming call", vec2(0.0f), 24.0f / zoom, true);
+    UiLabel& title = UI::AddLabel(*menu, "panel-title", "scam call", vec2(0.0f), 24.0f / zoom, true);
     title.dynamicPos = [popupHalf]() {
         return vec2(0.0f, popupHalf.y - 56.0f);
     };
@@ -202,14 +308,14 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
         CloseRoom1PhoneCall();
     };
 
-    if (phoneTexture != 0) {
+    if (phoneTexture != 0 && !room1PhoneCall.finished) {
         int phoneWidth = 0;
         int phoneHeight = 0;
-        vec2 phoneSize = vec2(popupHalf.x * 0.42f, popupHalf.y * 0.92f);
+        vec2 phoneSize = vec2(popupHalf.x * 0.26f, popupHalf.y * 0.76f);
         if (Image::GetTextureSize(phoneTexture, phoneWidth, phoneHeight) && phoneWidth > 0 && phoneHeight > 0) {
             float aspect = static_cast<float>(phoneWidth) / static_cast<float>(phoneHeight);
-            float maxWidth = popupHalf.x * 0.42f;
-            float maxHeight = popupHalf.y * 0.82f;
+            float maxWidth = popupHalf.x * 0.26f;
+            float maxHeight = popupHalf.y * 0.70f;
             phoneSize = vec2(maxWidth, maxWidth / aspect);
             if (phoneSize.y > maxHeight) {
                 phoneSize.y = maxHeight;
@@ -219,17 +325,75 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
 
         UiImage& image = UI::AddImage(*menu, "phone-image", phoneTexture, vec2(0.0f, 26.0f), phoneSize);
         image.dynamicPos = [phoneSize]() {
-            return vec2(0.0f, 26.0f);
+            return vec2(-230.0f, -8.0f);
         };
         image.dynamicDim = [phoneSize]() {
             return phoneSize;
         };
     }
 
-    UiLabel& bodyLabel = UI::AddLabel(*menu, "phone-body-label", "click x to exit", vec2(0.0f, -popupHalf.y * 0.28f), 18.0f / zoom, true);
-    bodyLabel.dynamicPos = [popupHalf]() {
-        return vec2(0.0f, -popupHalf.y * 0.28f);
+    if (room1PhoneCall.finished) {
+        const std::string resultText = room1PhoneCall.playerScammed
+            ? "you got scammed"
+            : "congrats you stoped your senior from getting scammed, phew!";
+        UiLabel& result = UI::AddLabel(*menu, "phone-result", resultText, vec2(0.0f, 20.0f), 22.0f / zoom, true);
+        result.dynamicPos = []() {
+            return vec2(0.0f, 28.0f);
+        };
+
+        const std::string detailText = room1PhoneCall.playerScammed
+            ? "redo one completed task to recover"
+            : "the scammer gave up";
+        UiLabel& detail = UI::AddLabel(*menu, "phone-result-detail", detailText, vec2(0.0f, -38.0f), 16.0f / zoom, true);
+        detail.dynamicPos = []() {
+            return vec2(0.0f, -38.0f);
+        };
+        return menu;
+    }
+
+    int questionIndex = std::max(0, std::min(room1PhoneCall.questionIndex, static_cast<int>(scamCallQuestions.size()) - 1));
+    const ScamCallQuestion& question = scamCallQuestions[questionIndex];
+
+    UiLabel& progress = UI::AddLabel(
+        *menu,
+        "phone-progress",
+        "question " + std::to_string(questionIndex + 1) + " of " + std::to_string(scamCallQuestions.size()) +
+            "  wrong " + std::to_string(room1PhoneCall.wrongAnswers) + "/2",
+        vec2(0.0f, 0.0f),
+        15.0f / zoom,
+        true
+    );
+    progress.dynamicPos = [popupHalf]() {
+        return vec2(0.0f, popupHalf.y - 96.0f);
     };
+
+    UiLabel& bodyLabel = UI::AddLabel(*menu, "phone-body-label", question.scammerLine, vec2(0.0f, 0.0f), 16.0f / zoom, true);
+    bodyLabel.dynamicPos = []() {
+        return vec2(70.0f, 118.0f);
+    };
+
+    const std::vector<std::string> letters = {"A", "B", "C", "D"};
+    for (int i = 0; i < static_cast<int>(question.answers.size()); ++i) {
+        float y = 56.0f - static_cast<float>(i) * 58.0f;
+        Button& answerButton = UI::AddButton(*menu, "phone-answer-" + std::to_string(i), letters[i], vec2(0.0f), vec2(24.0f, 22.0f), 0);
+        answerButton.labelSize = 15.0f / zoom;
+        answerButton.labelSpacing = 1.8f;
+        answerButton.fallbackColor = vec4(0.20f, 0.31f, 0.42f, 1.0f);
+        answerButton.fallbackHoverColor = vec4(0.25f, 0.42f, 0.54f, 1.0f);
+        answerButton.fallbackPressedColor = vec4(0.14f, 0.24f, 0.32f, 1.0f);
+        answerButton.dynamicPos = [y]() {
+            return vec2(-88.0f, y);
+        };
+        bool safeAnswer = question.answers[i].safe;
+        answerButton.onClick = [safeAnswer]() {
+            SelectRoom1PhoneAnswer(safeAnswer);
+        };
+
+        UiLabel& answerLabel = UI::AddLabel(*menu, "phone-answer-label-" + std::to_string(i), question.answers[i].text, vec2(0.0f), 14.0f / zoom, false);
+        answerLabel.dynamicPos = [y]() {
+            return vec2(-54.0f, y - 5.0f);
+        };
+    }
 
     return menu;
 }
@@ -958,10 +1122,33 @@ void EnsureObjectiveExists(const Character& character, int taskId) {
     Task task;
     task.id = taskId;
     task.name = character.tasks[taskId];
+    task.assignedBy = character.name;
     task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
     task.room = character.room;
     ApplyTaskPositionOverride(task);
     objectives.push_back(task);
+}
+
+bool ReopenCompletedTask(int room, int taskId, const std::string& taskName) {
+    Character* character = getCharacterForRoom(characters, room);
+    if (character == nullptr || taskId < 0 || taskId >= static_cast<int>(character->tasks.size())) {
+        return false;
+    }
+
+    character->tasksCompleted = std::max(0, character->tasksCompleted - 1);
+    character->tasksGiven = std::max(character->tasksGiven, taskId + 1);
+    character->level = character->tasksCompleted * 30;
+    character->isRoaming = false;
+
+    EnsureObjectiveExists(*character, taskId);
+
+    const std::string& reopenedTaskName = taskName.empty() ? character->tasks[taskId] : taskName;
+    if (std::find(player.tasks.begin(), player.tasks.end(), reopenedTaskName) == player.tasks.end()) {
+        player.tasks.push_back(reopenedTaskName);
+    }
+
+    WebFrontendTaskSaved(character->name.c_str(), reopenedTaskName.c_str(), room, taskId, 0);
+    return true;
 }
 
 std::string SerializeTaskProgress(const std::vector<Character>& chars) {
@@ -2049,7 +2236,7 @@ int RunCommunityApp()
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
                     completedCharacter->level = completedCharacter->tasksCompleted * 30;
                     if (completedTask.room == 1 && completedCharacter->tasksCompleted == 1) {
-                        TriggerRoom1PhoneCall();
+                        TriggerRoom1PhoneCall(completedTask);
                     }
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         completedCharacter->isRoaming = true;
