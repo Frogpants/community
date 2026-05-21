@@ -6,3 +6,6 @@
 2 3 704 -64 "make bed"
 2 0 -192 -512 "wash dishes"
 2 1 0 -512 "take out trash"
+3 1 -64 -256 "take out trash"
+3 2 256 -256 "do laundry"
+3 0 64 -256 "wash dishes"

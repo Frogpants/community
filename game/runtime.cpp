@@ -108,6 +108,7 @@ std::vector<Task> objectives;
 
 std::string gLocalPlayerName;
 const int taskLevelIncrease = 20;
+bool gameNotificationsEnabled = true;
 
 const std::string goIntoRoomsNotificationMenuId = "go-into-rooms-notification";
 
@@ -131,9 +132,19 @@ struct RoomUnlockNotificationState {
     bool seniorTutorialShown = false;
     bool taskTutorialActive = false;
     bool taskTutorialShown = false;
+    bool treeLifeActive = false;
+    bool treeLifeReturnPromptActive = false;
+    int treeLifeReturnPromptDelayFrames = 0;
+    bool treePreviewActive = false;
     int activeRoom = -1;
     int arrowRoom = -1;
     int npcArrowRoom = -1;
+    int treeFocusRoom = -1;
+    vec2 treeFocusPos = vec2(0.0f);
+    int treePreviewRoom = -1;
+    vec2 treePreviewPlayerPos = vec2(0.0f);
+    vec2 treePreviewCameraPos = vec2(0.0f);
+    vec2 treePreviewCameraTarget = vec2(0.0f);
     std::vector<int> pendingRooms;
 };
 
@@ -390,15 +401,81 @@ void SelectRoom1PhoneAnswer(bool safeAnswer) {
 }
 
 void DismissRoomUnlockNotification() {
+    bool wasTreeLifeActive = roomUnlockNotification.treeLifeActive;
     roomUnlockNotification.visible = false;
     roomUnlockNotification.tutorialActive = false;
     roomUnlockNotification.seniorTutorialActive = false;
     roomUnlockNotification.taskTutorialActive = false;
+    roomUnlockNotification.treeLifeActive = false;
+    roomUnlockNotification.treeLifeReturnPromptActive = false;
+    roomUnlockNotification.treeLifeReturnPromptDelayFrames = 0;
+    roomUnlockNotification.treePreviewActive = false;
+    roomUnlockNotification.treeFocusRoom = -1;
     roomUnlockNotification.activeRoom = -1;
+    if (wasTreeLifeActive) {
+        if (roomUnlockNotification.treePreviewRoom >= 0) {
+            player.room = roomUnlockNotification.treePreviewRoom;
+            player.pos = roomUnlockNotification.treePreviewPlayerPos;
+            camera.pos = roomUnlockNotification.treePreviewCameraPos;
+            camera.target = roomUnlockNotification.treePreviewCameraTarget;
+        } else {
+            camera.target = player.pos;
+        }
+    }
+    roomUnlockNotification.treePreviewRoom = -1;
     UI::RemoveMenu("room-unlock-notification");
 }
 
+void AcknowledgeTreeLifeNotification() {
+    if (!roomUnlockNotification.treeLifeActive) {
+        return;
+    }
+
+    roomUnlockNotification.treeLifeReturnPromptActive = true;
+    roomUnlockNotification.treeLifeReturnPromptDelayFrames = 1;
+}
+
+void ClearGameNotifications() {
+    DismissRoomUnlockNotification();
+    roomUnlockNotification.arrowRoom = -1;
+    roomUnlockNotification.npcArrowRoom = -1;
+    roomUnlockNotification.pendingRooms.clear();
+}
+
+void ShowTreeLifeNotification(int roomId, vec2 treePos) {
+    if (!gameNotificationsEnabled) {
+        return;
+    }
+
+    if (!roomUnlockNotification.treePreviewActive) {
+        roomUnlockNotification.treePreviewActive = true;
+        roomUnlockNotification.treePreviewRoom = player.room;
+        roomUnlockNotification.treePreviewPlayerPos = player.pos;
+        roomUnlockNotification.treePreviewCameraPos = camera.pos;
+        roomUnlockNotification.treePreviewCameraTarget = camera.target;
+    }
+
+    roomUnlockNotification.visible = true;
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = false;
+    roomUnlockNotification.taskTutorialActive = false;
+    roomUnlockNotification.treeLifeActive = true;
+    roomUnlockNotification.treeLifeReturnPromptActive = false;
+    roomUnlockNotification.treeLifeReturnPromptDelayFrames = 0;
+    roomUnlockNotification.activeRoom = roomId;
+    roomUnlockNotification.treeFocusRoom = 0;
+    roomUnlockNotification.treeFocusPos = treePos;
+
+    player.room = 0;
+    camera.pos = treePos;
+    camera.target = treePos;
+}
+
 void ShowTutorialNotification() {
+    if (!gameNotificationsEnabled) {
+        return;
+    }
+
     roomUnlockNotification.visible = true;
     roomUnlockNotification.tutorialActive = true;
     roomUnlockNotification.activeRoom = 1;
@@ -406,7 +483,7 @@ void ShowTutorialNotification() {
 }
 
 void ShowSeniorTutorialNotification(int roomId) {
-    if (roomUnlockNotification.seniorTutorialShown) {
+    if (!gameNotificationsEnabled || roomUnlockNotification.seniorTutorialShown) {
         return;
     }
 
@@ -419,7 +496,7 @@ void ShowSeniorTutorialNotification(int roomId) {
 }
 
 void ShowTaskTutorialNotification() {
-    if (roomUnlockNotification.taskTutorialShown) {
+    if (!gameNotificationsEnabled || roomUnlockNotification.taskTutorialShown) {
         return;
     }
 
@@ -431,7 +508,7 @@ void ShowTaskTutorialNotification() {
 }
 
 void QueueRoomUnlockNotification(int roomId) {
-    if (roomId < 2) {
+    if (!gameNotificationsEnabled || roomId < 2) {
         return;
     }
 
@@ -440,7 +517,7 @@ void QueueRoomUnlockNotification(int roomId) {
 }
 
 void ShowNextRoomUnlockNotification() {
-    if (roomUnlockNotification.visible || roomUnlockNotification.pendingRooms.empty()) {
+    if (!gameNotificationsEnabled || roomUnlockNotification.visible || roomUnlockNotification.pendingRooms.empty()) {
         return;
     }
 
@@ -449,6 +526,7 @@ void ShowNextRoomUnlockNotification() {
     roomUnlockNotification.tutorialActive = false;
     roomUnlockNotification.seniorTutorialActive = false;
     roomUnlockNotification.taskTutorialActive = false;
+    roomUnlockNotification.treeLifeActive = false;
     roomUnlockNotification.visible = true;
 }
 
@@ -468,29 +546,32 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         std::min(fullSize.x * 0.48f, 540.0f),
         156.0f
     );
+    const bool treeLifeMode = roomUnlockNotification.treeLifeActive;
 
-    UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), fullSize, vec4(0.0f, 0.0f, 0.0f, 0.12f));
-    overlay.dynamicDim = [fullSize]() {
-        return fullSize;
-    };
+    if (!treeLifeMode) {
+        UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), fullSize, vec4(0.0f, 0.0f, 0.0f, 0.12f));
+        overlay.dynamicDim = [fullSize]() {
+            return fullSize;
+        };
 
-    UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", vec2(7.0f, -7.0f), popupHalf, vec4(0.22f, 0.25f, 0.20f, 0.35f));
-    shadow.dynamicDim = [popupHalf]() {
-        return popupHalf;
-    };
+        UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", vec2(7.0f, -7.0f), popupHalf, vec4(0.22f, 0.25f, 0.20f, 0.35f));
+        shadow.dynamicDim = [popupHalf]() {
+            return popupHalf;
+        };
 
-    UiPanel& body = UI::AddPanel(*menu, "panel-body", vec2(0.0f), popupHalf, vec4(0.88f, 0.93f, 0.82f, 1.0f));
-    body.dynamicDim = [popupHalf]() {
-        return popupHalf;
-    };
+        UiPanel& body = UI::AddPanel(*menu, "panel-body", vec2(0.0f), popupHalf, vec4(0.88f, 0.93f, 0.82f, 1.0f));
+        body.dynamicDim = [popupHalf]() {
+            return popupHalf;
+        };
 
-    UiPanel& header = UI::AddPanel(*menu, "panel-highlight", vec2(0.0f, popupHalf.y - 18.0f), vec2(popupHalf.x - 18.0f, 9.0f), vec4(0.39f, 0.55f, 0.35f, 1.0f));
-    header.dynamicPos = [popupHalf]() {
-        return vec2(0.0f, popupHalf.y - 18.0f);
-    };
-    header.dynamicDim = [popupHalf]() {
-        return vec2(popupHalf.x - 18.0f, 9.0f);
-    };
+        UiPanel& header = UI::AddPanel(*menu, "panel-highlight", vec2(0.0f, popupHalf.y - 18.0f), vec2(popupHalf.x - 18.0f, 9.0f), vec4(0.39f, 0.55f, 0.35f, 1.0f));
+        header.dynamicPos = [popupHalf]() {
+            return vec2(0.0f, popupHalf.y - 18.0f);
+        };
+        header.dynamicDim = [popupHalf]() {
+            return vec2(popupHalf.x - 18.0f, 9.0f);
+        };
+    }
 
     if (roomUnlockNotification.tutorialActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "welcome enter house 1 to begin", vec2(0.0f, 28.0f), 21.0f / zoom, true);
@@ -507,12 +588,24 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "click e to interact", vec2(0.0f, -28.0f), 17.0f / zoom, true);
         detail.spacing = 1.7f;
     } else if (roomUnlockNotification.taskTutorialActive) {
-        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "click e on the highlighted tasks", vec2(0.0f, 18.0f), 19.0f / zoom, true);
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "click again on your senior", vec2(0.0f, 34.0f), 18.0f / zoom, true);
         title.spacing = 1.7f;
 
-        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "to complete them", vec2(0.0f, -16.0f), 19.0f / zoom, true);
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "for more tasks or click e", vec2(0.0f, 4.0f), 18.0f / zoom, true);
         detail.spacing = 1.7f;
-    } else {
+
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "on highlighted tasks to complete them", vec2(0.0f, -26.0f), 17.0f / zoom, true);
+        instruction.spacing = 1.7f;
+    } else if (roomUnlockNotification.treeLifeActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "your help brought new life", vec2(0.0f, 34.0f), 19.0f / zoom, true);
+        title.spacing = 1.7f;
+
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "into this town", vec2(0.0f, 4.0f), 19.0f / zoom, true);
+        detail.spacing = 1.7f;
+
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "look, a tree sprouted!", vec2(0.0f, -26.0f), 17.0f / zoom, true);
+        instruction.spacing = 1.7f;
+    } else if (!roomUnlockNotification.treeLifeActive) {
         std::string titleText = "room " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", titleText, vec2(0.0f, 48.0f), 22.0f / zoom, true);
         title.spacing = 1.7f;
@@ -524,7 +617,14 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         detail.spacing = 1.7f;
     }
 
-    Button& ok = UI::AddButton(*menu, "ok", "ok", vec2(0.0f, -74.0f), vec2(88.0f, 32.0f), 0);
+    Button& ok = UI::AddButton(
+        *menu,
+        "ok",
+        roomUnlockNotification.treeLifeActive ? "yay!" : "ok",
+        vec2(0.0f, -74.0f),
+        vec2(88.0f, 32.0f),
+        0
+    );
     ok.labelSize = 16.0f / zoom;
     ok.labelSpacing = 2.0f;
     ok.fallbackColor = vec4(0.39f, 0.55f, 0.35f, 1.0f);
@@ -538,7 +638,7 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
 }
 
 void DrawRoomUnlockNotification(vec2 screen, float zoom, vec2 mouseUI) {
-    if (!roomUnlockNotification.visible) {
+    if (!gameNotificationsEnabled || !roomUnlockNotification.visible) {
         UI::RemoveMenu("room-unlock-notification");
         return;
     }
@@ -883,7 +983,7 @@ struct Door {
 };
 
 void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
-    if (player.room != 0 || roomUnlockNotification.arrowRoom < 1) {
+    if (!gameNotificationsEnabled || player.room != 0 || roomUnlockNotification.arrowRoom < 1) {
         return;
     }
 
@@ -918,7 +1018,7 @@ void DrawRoomUnlockArrow(const std::vector<Door>& doors, float timer) {
 }
 
 void DrawSeniorInteractArrow(const std::vector<Character>& chars, float timer) {
-    if (player.room != roomUnlockNotification.npcArrowRoom || roomUnlockNotification.npcArrowRoom < 1) {
+    if (!gameNotificationsEnabled || player.room != roomUnlockNotification.npcArrowRoom || roomUnlockNotification.npcArrowRoom < 1) {
         return;
     }
 
@@ -1088,6 +1188,7 @@ float zoom = 2.0;
 
 int running = 1;
 bool inMainMenu = true;
+bool inSettingsMenu = false;
 bool multiplayerStarted = false;
 
 std::string getEnvOrDefault(const char* key, const std::string& fallback) {
@@ -1353,7 +1454,7 @@ vec2 moveWithCollisionMarkers(const vec2& currentPos, const vec2& dim, const vec
     return resolvedPos;
 }
 
-void spawnTreeOnMarkerForRoom(const std::vector<Tile>& tiles, std::vector<TreeProp>& trees, int room)
+bool spawnTreeOnMarkerForRoom(const std::vector<Tile>& tiles, std::vector<TreeProp>& trees, int room, vec2* spawnedTreePos = nullptr)
 {
     std::vector<std::pair<vec2, int>> availableMarkers;
 
@@ -1397,7 +1498,7 @@ void spawnTreeOnMarkerForRoom(const std::vector<Tile>& tiles, std::vector<TreePr
 
     if (availableMarkers.empty()) {
         std::cout << "nowhere to put tree" << std::endl;
-        return;
+        return false;
     }
 
     int markerIndex = randInt(0, static_cast<int>(availableMarkers.size()) - 1);
@@ -1405,6 +1506,10 @@ void spawnTreeOnMarkerForRoom(const std::vector<Tile>& tiles, std::vector<TreePr
     tree.room = availableMarkers[markerIndex].second;
     tree.pos = availableMarkers[markerIndex].first;
     trees.push_back(tree);
+    if (spawnedTreePos != nullptr) {
+        *spawnedTreePos = tree.pos;
+    }
+    return true;
 }
 
 
@@ -1879,11 +1984,100 @@ int RunCommunityApp()
     };
     playMenuButton.onClick = [&]() {
         inMainMenu = false;
-        ShowTutorialNotification();
+        inSettingsMenu = true;
+    };
+
+    bool gameStarted = false;
+
+    Menu& settingsMenu = UI::CreateMenu("settings-menu");
+    settingsMenu.visible = false;
+    settingsMenu.enabled = false;
+
+    UiPanel& settingsBackground = UI::AddPanel(
+        settingsMenu,
+        "settings-background",
+        vec2(0.0f, 0.0f),
+        vec2(screen.x / zoom, screen.y / zoom),
+        vec4(0.90f, 0.94f, 0.84f, 1.0f)
+    );
+    settingsBackground.dynamicDim = [&]() {
+        return vec2(screen.x / zoom, screen.y / zoom);
+    };
+
+    UI::AddLabel(settingsMenu, "settings-title", "settings", vec2(0.0f, 250.0f), 42.0f / zoom, true);
+    UI::AddLabel(settingsMenu, "character-label", "select your character", vec2(0.0f, 150.0f), 22.0f / zoom, true);
+
+    UiPanel& leftSpritePanel = UI::AddPanel(settingsMenu, "sprite-panel-left", vec2(-180.0f, 45.0f), vec2(96.0f, 112.0f), vec4(0.72f, 0.76f, 0.68f, 0.85f));
+    leftSpritePanel.dynamicPos = []() {
+        return vec2(-180.0f, 45.0f);
+    };
+    UI::AddLabel(settingsMenu, "sprite-left-coming-soon", "coming soon", vec2(-180.0f, 38.0f), 14.0f / zoom, true);
+
+    UiPanel& spritePanel = UI::AddPanel(settingsMenu, "sprite-panel", vec2(0.0f, 45.0f), vec2(96.0f, 112.0f), vec4(0.78f, 0.86f, 0.72f, 1.0f));
+    spritePanel.dynamicPos = []() {
+        return vec2(0.0f, 45.0f);
+    };
+
+    UI::AddImage(settingsMenu, "player-stand-preview", player.texture, vec2(0.0f, 58.0f), vec2(74.0f, 74.0f));
+    UI::AddLabel(settingsMenu, "player-stand-label", "player-stand.png", vec2(0.0f, -28.0f), 15.0f / zoom, true);
+
+    UiPanel& rightSpritePanel = UI::AddPanel(settingsMenu, "sprite-panel-right", vec2(180.0f, 45.0f), vec2(96.0f, 112.0f), vec4(0.72f, 0.76f, 0.68f, 0.85f));
+    rightSpritePanel.dynamicPos = []() {
+        return vec2(180.0f, 45.0f);
+    };
+    UI::AddLabel(settingsMenu, "sprite-right-coming-soon", "coming soon", vec2(180.0f, 38.0f), 14.0f / zoom, true);
+
+    Button& notificationsToggle = UI::AddButton(settingsMenu, "notifications-toggle", "notifications on", vec2(0.0f, -108.0f), vec2(230.0f, 42.0f), 0);
+    notificationsToggle.labelSize = 17.0f / zoom;
+    notificationsToggle.labelSpacing = 1.8f;
+    notificationsToggle.fallbackColor = vec4(0.39f, 0.55f, 0.35f, 1.0f);
+    notificationsToggle.fallbackHoverColor = vec4(0.47f, 0.63f, 0.41f, 1.0f);
+    notificationsToggle.fallbackPressedColor = vec4(0.30f, 0.43f, 0.27f, 1.0f);
+    notificationsToggle.onClick = [&]() {
+        gameNotificationsEnabled = !gameNotificationsEnabled;
+        if (!gameNotificationsEnabled) {
+            ClearGameNotifications();
+        }
+    };
+
+    Button& continueButton = UI::AddButton(settingsMenu, "continue", "continue", vec2(0.0f, -190.0f), vec2(170.0f, 50.0f), 0);
+    continueButton.labelSize = 20.0f / zoom;
+    continueButton.labelSpacing = 1.9f;
+    continueButton.fallbackColor = vec4(0.28f, 0.44f, 0.30f, 1.0f);
+    continueButton.fallbackHoverColor = vec4(0.36f, 0.54f, 0.36f, 1.0f);
+    continueButton.fallbackPressedColor = vec4(0.22f, 0.34f, 0.24f, 1.0f);
+    continueButton.onClick = [&]() {
+        inSettingsMenu = false;
+        if (!gameStarted) {
+            ShowTutorialNotification();
+            gameStarted = true;
+        }
         if (!multiplayerStarted) {
             multiplayer.initOrJoin(requestedRoomCode);
             multiplayerStarted = true;
         }
+    };
+
+    Menu& hudSettingsMenu = UI::CreateMenu("hud-settings-menu");
+    hudSettingsMenu.visible = false;
+    hudSettingsMenu.enabled = false;
+    Button& hudSettingsButton = UI::AddButton(hudSettingsMenu, "settings", "", vec2(0.0f), vec2(170.0f, 34.0f), 0);
+    hudSettingsButton.fallbackColor = vec4(0.34f, 0.45f, 0.33f, 0.95f);
+    hudSettingsButton.fallbackHoverColor = vec4(0.42f, 0.56f, 0.39f, 1.0f);
+    hudSettingsButton.fallbackPressedColor = vec4(0.26f, 0.34f, 0.25f, 1.0f);
+    hudSettingsButton.dynamicPos = []() {
+        return vec2(-screen.x + 210.0f, screen.y - 118.0f) / zoom;
+    };
+    hudSettingsButton.dynamicDim = []() {
+        return vec2(170.0f, 34.0f) / zoom;
+    };
+    hudSettingsButton.onClick = [&]() {
+        inSettingsMenu = true;
+    };
+    UiLabel& hudSettingsLabel = UI::AddLabel(hudSettingsMenu, "settings-label", "settings", vec2(0.0f), 16.0f / zoom, true);
+    hudSettingsLabel.spacing = 1.8f;
+    hudSettingsLabel.dynamicPos = []() {
+        return vec2(-screen.x + 192.0f, screen.y - 123.0f) / zoom;
     };
 
     double lastFrameTime = glfwGetTime();
@@ -1918,8 +2112,18 @@ int RunCommunityApp()
         timer += 0.01;
 
         if (inMainMenu) {
-            mainMenu.visible = true;
-            mainMenu.enabled = true;
+            if (Menu* menu = UI::FindMenu("main-menu")) {
+                menu->visible = true;
+                menu->enabled = true;
+            }
+            if (Menu* menu = UI::FindMenu("settings-menu")) {
+                menu->visible = false;
+                menu->enabled = false;
+            }
+            if (Menu* menu = UI::FindMenu("hud-settings-menu")) {
+                menu->visible = false;
+                menu->enabled = false;
+            }
             UI::Draw();
 
             Manager::Update();
@@ -1927,8 +2131,45 @@ int RunCommunityApp()
             return;
         }
 
-        mainMenu.visible = false;
-        mainMenu.enabled = false;
+        if (Menu* menu = UI::FindMenu("main-menu")) {
+            menu->visible = false;
+            menu->enabled = false;
+        }
+
+        if (inSettingsMenu) {
+            if (Menu* menu = UI::FindMenu("hud-settings-menu")) {
+                menu->visible = false;
+                menu->enabled = false;
+            }
+            if (Menu* menu = UI::FindMenu("settings-menu")) {
+                menu->visible = true;
+                menu->enabled = true;
+                for (Button& button : menu->buttons) {
+                    if (button.id == "notifications-toggle") {
+                        button.label = gameNotificationsEnabled ? "notifications on" : "notifications off";
+                        if (gameNotificationsEnabled) {
+                            button.fallbackColor = vec4(0.39f, 0.55f, 0.35f, 1.0f);
+                            button.fallbackHoverColor = vec4(0.47f, 0.63f, 0.41f, 1.0f);
+                            button.fallbackPressedColor = vec4(0.30f, 0.43f, 0.27f, 1.0f);
+                        } else {
+                            button.fallbackColor = vec4(0.45f, 0.42f, 0.38f, 1.0f);
+                            button.fallbackHoverColor = vec4(0.55f, 0.50f, 0.44f, 1.0f);
+                            button.fallbackPressedColor = vec4(0.35f, 0.32f, 0.29f, 1.0f);
+                        }
+                    }
+                }
+            }
+            UI::Draw();
+
+            Manager::Update();
+            glfwSwapBuffers(window);
+            return;
+        }
+
+        if (Menu* menu = UI::FindMenu("settings-menu")) {
+            menu->visible = false;
+            menu->enabled = false;
+        }
 
         glTranslatef(-camera.pos.x, -camera.pos.y, 0);
 
@@ -2330,7 +2571,11 @@ int RunCommunityApp()
                 }
 
             } else {
-                camera.target = player.pos;
+                if (roomUnlockNotification.treeLifeActive && player.room == roomUnlockNotification.treeFocusRoom) {
+                    camera.target = roomUnlockNotification.treeFocusPos;
+                } else {
+                    camera.target = player.pos;
+                }
                 camera.follow();
 
                 bool modalOpen = Minigames::IsTaskOpen() || roomUnlockNotification.visible;
@@ -2519,6 +2764,17 @@ int RunCommunityApp()
             Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
+        if (!Minigames::IsTaskOpen() && !roomUnlockNotification.visible) {
+            if (Menu* menu = UI::FindMenu("hud-settings-menu")) {
+                menu->visible = true;
+                menu->enabled = true;
+                menu->update(GetMouseUI(window));
+                menu->draw();
+                menu->visible = false;
+                menu->enabled = false;
+            }
+        }
+
         std::string taskText = "objectives " + std::to_string(player.tasks.size());
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
 
@@ -2649,7 +2905,11 @@ int RunCommunityApp()
                     }
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         completedCharacter->isRoaming = true;
-                        spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room);
+                        vec2 spawnedTreePos = vec2(0.0f);
+                        bool treeSpawned = spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room, &spawnedTreePos);
+                        if (treeSpawned && player.room == completedCharacter->room) {
+                            ShowTreeLifeNotification(completedCharacter->room, spawnedTreePos);
+                        }
                         int unlockedRoom = spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
                         QueueRoomUnlockNotification(unlockedRoom);
                         if (player.room == 0) {
