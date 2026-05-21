@@ -19,10 +19,11 @@
 namespace Minigames {
 
     constexpr float kWashDishesBubbleStartDelaySeconds = 3.0f;
-    constexpr float kWashDishesBubbleSpawnMinSeconds = 1.0f;
-    constexpr float kWashDishesBubbleSpawnMaxSeconds = 1.0f;
-    // Shorten bubble lifetime so missed bubbles disappear sooner (in seconds).
-    constexpr float kWashDishesBubbleLifeSeconds = 4.0f;
+    // Spawn bubbles more frequently but have them move much slower; extend lifetime to allow overlap.
+    constexpr float kWashDishesBubbleSpawnMinSeconds = 0.25f;
+    constexpr float kWashDishesBubbleSpawnMaxSeconds = 0.55f;
+    // Bubble lifetime (seconds) before considered missed — increased to allow more on-screen overlap.
+    constexpr float kWashDishesBubbleLifeSeconds = 8.0f;
     constexpr float kLaundryFillPerSecond = 0.12f;
     constexpr float kLaundryDrainPerSecond = 0.04f;
     constexpr float kTaskCompletionAutoCloseSeconds = 3.0f;
@@ -861,11 +862,18 @@ namespace Minigames {
                 }
             }
 
+            float bubbleMissBoundaryY = panelHalf.y - 18.0f;
             for (Bubble& bubble : washDishes.bubbles) {
                 bubble.lifeFrames -= deltaTime;
                 // Increase vertical speed so bubbles rise noticeably faster (pixels/sec).
                 // Use deltaTime to make movement frame-rate independent.
-                bubble.pos.y += 480.0f * deltaTime;
+                // Move bubbles much slower (pixels/sec) so they are easier to pop; uses deltaTime.
+                bubble.pos.y += 40.0f * deltaTime;
+
+                // Treat bubbles as missed before they leave the popup box.
+                if (bubble.pos.y + bubble.radius >= bubbleMissBoundaryY) {
+                    bubble.lifeFrames = 0.0f;
+                }
             }
 
             int before = static_cast<int>(washDishes.bubbles.size());
