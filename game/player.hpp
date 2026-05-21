@@ -26,6 +26,8 @@ struct Player {
 
     int room = 0;
 
+    bool facingBackwards = false;
+
     std::vector<std::string> tasks;
 
     void controls(float frameScale = 1.0f) {

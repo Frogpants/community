@@ -400,6 +400,8 @@ void SelectRoom1PhoneAnswer(bool safeAnswer) {
     }
 }
 
+void ShowNextRoomUnlockNotification();
+
 void DismissRoomUnlockNotification() {
     bool wasTreeLifeActive = roomUnlockNotification.treeLifeActive;
     roomUnlockNotification.visible = false;
@@ -424,6 +426,10 @@ void DismissRoomUnlockNotification() {
     }
     roomUnlockNotification.treePreviewRoom = -1;
     UI::RemoveMenu("room-unlock-notification");
+
+    if (wasTreeLifeActive && !roomUnlockNotification.pendingRooms.empty()) {
+        ShowNextRoomUnlockNotification();
+    }
 }
 
 void AcknowledgeTreeLifeNotification() {
@@ -1377,9 +1383,37 @@ int spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int&
 
     doors.push_back(makeDoorForRoom(roomId, hubDoorPositions));
     chars.push_back(makeCharacterForRoom(roomId, roomId - 1));
-    chars.back().texture = Image::Load("assets/npcs/character.png");
+    if (roomId == 2) {
+        GLuint grandmaTexture = Image::Load("assets/game-art/grandma.png");
+        chars.back().texture = (grandmaTexture != 0) ? grandmaTexture : Image::Load("assets/npcs/character.png");
+    } else {
+        chars.back().texture = Image::Load("assets/npcs/character.png");
+    }
     completedCharacter.nextStageSpawned = true;
     return roomId;
+}
+
+void MoveCompletedCharacterToHub(Character& character, const std::vector<vec2>& hubDoorPositions) {
+    if (character.room <= 0) {
+        return;
+    }
+
+    int hubIndex = character.room - 1;
+    if (hubIndex >= 0 && hubIndex < static_cast<int>(hubDoorPositions.size())) {
+        character.pos = hubDoorPositions[hubIndex];
+    }
+    character.target = character.pos;
+    character.roamCenter = character.pos;
+    character.roamTimer = 0.0f;
+    character.isRoaming = false;
+}
+
+bool ShouldDrawCharacterInCurrentRoom(const Character& character, int playerRoom) {
+    if (character.room == playerRoom) {
+        return true;
+    }
+
+    return playerRoom == 0 && character.nextStageSpawned;
 }
 
 void drawTreeSpawnMarkerTile(const vec2& pos)
@@ -1745,9 +1779,9 @@ void ApplyRemoteTaskProgressState(const std::string& serializedState,
         }
 
         if (character->tasksCompleted >= maxTasks && !character->isRoaming) {
-            character->isRoaming = true;
             spawnTreeOnMarkerForRoom(tiles, trees, character->room);
             spawnNextStage(chars, doors, nextRoomId, *character, hubDoorPositions);
+            MoveCompletedCharacterToHub(*character, hubDoorPositions);
         }
     }
 }
@@ -1911,6 +1945,8 @@ int RunCommunityApp()
     player.textures.push_back(Image::Load("assets/game-art/player-stand.png"));
     player.textures.push_back(Image::Load("assets/game-art/player-step1.png"));
     player.textures.push_back(Image::Load("assets/game-art/player-step2.png"));
+    player.textures.push_back(Image::Load("assets/game-art/player-step3.png"));
+    player.textures.push_back(Image::Load("assets/game-art/player-step4.png"));
     // Fallback single texture for compatibility
     player.texture = (player.textures.size() > 0 && player.textures[0] != 0) ? player.textures[0] : Image::Load("assets/agent-bullet.png");
 
@@ -2727,11 +2763,26 @@ int RunCommunityApp()
         const float movementThreshold = 0.35f;
         const float stepFps = 8.0f; // animation speed in frames per second
         const float spriteScaleFactor = 0.33f; // scale images down by 4
-        if (player.textures.size() >= 3 && velMag > movementThreshold) {
-            int stepFrames = static_cast<int>(player.textures.size()) - 1;
-            int frame = static_cast<int>(std::floor(playerAnimTimer * stepFps)) % stepFrames;
-            if (frame < 0) frame = 0;
-            activePlayerTexture = player.textures[1 + frame];
+        if (player.textures.size() >= 5) {
+            if (player.vel.y > movementThreshold) {
+                player.facingBackwards = true;
+            } else if (player.vel.y < -movementThreshold) {
+                player.facingBackwards = false;
+            }
+
+            if (velMag > movementThreshold) {
+                int frame = static_cast<int>(std::floor(playerAnimTimer * stepFps)) % 2;
+                if (frame < 0) frame = 0;
+                if (player.facingBackwards) {
+                    activePlayerTexture = player.textures[3 + frame];
+                } else {
+                    activePlayerTexture = player.textures[1 + frame];
+                }
+            } else if (player.facingBackwards) {
+                activePlayerTexture = player.textures[3];
+            } else if (!player.textures.empty()) {
+                activePlayerTexture = player.textures[0];
+            }
         } else if (!player.textures.empty()) {
             activePlayerTexture = player.textures[0];
         }
@@ -2740,10 +2791,10 @@ int RunCommunityApp()
         Image::Draw(activePlayerTexture, player.pos, playerDrawSize);
         multiplayer.drawRemotePlayers(activePlayerTexture, player.room);
         for (const Character& c : characters) {
-                if (c.room == player.room) {
-                    float charDrawSize = 150.0f * 0.25f;
-                    Image::Draw(c.texture, c.pos, charDrawSize);
-                }
+            if (ShouldDrawCharacterInCurrentRoom(c, player.room)) {
+                float charDrawSize = 150.0f * 0.25f;
+                Image::Draw(c.texture, c.pos, charDrawSize);
+            }
         }
 
         // UI
@@ -2764,7 +2815,7 @@ int RunCommunityApp()
             Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
         }
 
-        if (!Minigames::IsTaskOpen() && !roomUnlockNotification.visible) {
+        if (!Minigames::IsTaskOpen()) {
             if (Menu* menu = UI::FindMenu("hud-settings-menu")) {
                 menu->visible = true;
                 menu->enabled = true;
@@ -2904,13 +2955,13 @@ int RunCommunityApp()
                         TriggerRoom1PhoneCall(completedTask);
                     }
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
-                        completedCharacter->isRoaming = true;
                         vec2 spawnedTreePos = vec2(0.0f);
                         bool treeSpawned = spawnTreeOnMarkerForRoom(tiles, spawnedTrees, completedCharacter->room, &spawnedTreePos);
                         if (treeSpawned && player.room == completedCharacter->room) {
                             ShowTreeLifeNotification(completedCharacter->room, spawnedTreePos);
                         }
                         int unlockedRoom = spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
+                        MoveCompletedCharacterToHub(*completedCharacter, hubDoorPositions);
                         QueueRoomUnlockNotification(unlockedRoom);
                         if (player.room == 0) {
                             ShowNextRoomUnlockNotification();
