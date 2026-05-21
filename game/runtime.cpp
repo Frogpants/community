@@ -132,6 +132,9 @@ struct Room1PhoneCallState {
     int redoTaskRoom = 1;
     int redoTaskId = -1;
     std::string redoTaskName;
+    std::vector<int> questionOrder;
+    std::vector<std::vector<int>> answerOrders;
+    bool answerClickConsumed = false;
 };
 
 Room1PhoneCallState room1PhoneCall;
@@ -191,10 +194,105 @@ const std::vector<ScamCallQuestion> scamCallQuestions = {
             {"I am ending this call.", true},
             {"Send it over, I will click it.", false}
         }
+    },
+    {
+        "Scammer: Your senior won a prize. We need a small fee.",
+        {
+            {"Real prizes do not ask for fees first.", true},
+            {"I will verify this with a trusted person.", true},
+            {"Please remove this number.", true},
+            {"I can pay the fee today.", false}
+        }
+    },
+    {
+        "Scammer: I am from tech support. Let me control the computer.",
+        {
+            {"No remote access for unexpected callers.", true},
+            {"I will call the real support number.", true},
+            {"I am closing this call now.", true},
+            {"Okay, I will install your app.", false}
+        }
+    },
+    {
+        "Scammer: Your senior owes taxes. Pay us right now.",
+        {
+            {"Tax agencies do not demand phone payment.", true},
+            {"I will check official mail or the official site.", true},
+            {"Threats make this sound like a scam.", true},
+            {"I will give you a card number.", false}
+        }
+    },
+    {
+        "Scammer: This is your grandchild. Please wire money secretly.",
+        {
+            {"I will call family to confirm.", true},
+            {"No secret money transfers.", true},
+            {"I need to verify who this is first.", true},
+            {"Tell me where to wire it.", false}
+        }
+    },
+    {
+        "Scammer: Your senior's power will be shut off unless you pay.",
+        {
+            {"I will check with the utility company directly.", true},
+            {"Real bills should be verified first.", true},
+            {"I will not pay an unknown caller.", true},
+            {"Take my card number before shutoff.", false}
+        }
+    },
+    {
+        "Scammer: We found fraud. Move money to this safe account.",
+        {
+            {"Banks do not ask people to move money by phone.", true},
+            {"I will visit or call the bank directly.", true},
+            {"I am not transferring anything.", true},
+            {"Give me the safe account number.", false}
+        }
+    },
+    {
+        "Scammer: Keep this call secret or your senior gets in trouble.",
+        {
+            {"Scammers ask people to keep secrets.", true},
+            {"I am telling a trusted adult now.", true},
+            {"Threats are a warning sign.", true},
+            {"Okay, I will not tell anyone.", false}
+        }
     }
 };
 
+const int kScamQuestionsPerCall = 5;
+
 bool ReopenCompletedTask(int room, int taskId, const std::string& taskName);
+
+void ShuffleIntList(std::vector<int>& values) {
+    for (int i = static_cast<int>(values.size()) - 1; i > 0; --i) {
+        int swapIndex = std::rand() % (i + 1);
+        std::swap(values[i], values[swapIndex]);
+    }
+}
+
+void BuildRoom1PhoneCallQuestionOrder() {
+    room1PhoneCall.questionOrder.clear();
+    room1PhoneCall.answerOrders.clear();
+
+    for (int i = 0; i < static_cast<int>(scamCallQuestions.size()); ++i) {
+        room1PhoneCall.questionOrder.push_back(i);
+    }
+    ShuffleIntList(room1PhoneCall.questionOrder);
+
+    int questionCount = std::min(kScamQuestionsPerCall, static_cast<int>(room1PhoneCall.questionOrder.size()));
+    room1PhoneCall.questionOrder.resize(questionCount);
+
+    for (int questionOrderIndex = 0; questionOrderIndex < questionCount; ++questionOrderIndex) {
+        int questionIndex = room1PhoneCall.questionOrder[questionOrderIndex];
+        std::vector<int> answerOrder;
+        for (int answerIndex = 0; answerIndex < static_cast<int>(scamCallQuestions[questionIndex].answers.size()); ++answerIndex) {
+            answerOrder.push_back(answerIndex);
+        }
+        ShuffleIntList(answerOrder);
+        room1PhoneCall.answerOrders.push_back(answerOrder);
+    }
+}
 
 void CloseRoom1PhoneCall() {
     room1PhoneCall.armed = false;
@@ -208,6 +306,9 @@ void CloseRoom1PhoneCall() {
     room1PhoneCall.redoTaskRoom = 1;
     room1PhoneCall.redoTaskId = -1;
     room1PhoneCall.redoTaskName.clear();
+    room1PhoneCall.questionOrder.clear();
+    room1PhoneCall.answerOrders.clear();
+    room1PhoneCall.answerClickConsumed = false;
     UI::RemoveMenu("room1-phone-popup");
 }
 
@@ -228,6 +329,8 @@ void TriggerRoom1PhoneCall(const Task& completedTask) {
     room1PhoneCall.redoTaskRoom = completedTask.room;
     room1PhoneCall.redoTaskId = completedTask.id;
     room1PhoneCall.redoTaskName = completedTask.name;
+    room1PhoneCall.answerClickConsumed = false;
+    BuildRoom1PhoneCallQuestionOrder();
 }
 
 void FinishRoom1PhoneCall() {
@@ -239,16 +342,18 @@ void FinishRoom1PhoneCall() {
 }
 
 void SelectRoom1PhoneAnswer(bool safeAnswer) {
-    if (room1PhoneCall.finished) {
+    if (room1PhoneCall.finished || room1PhoneCall.answerClickConsumed) {
         return;
     }
+
+    room1PhoneCall.answerClickConsumed = true;
 
     if (!safeAnswer) {
         room1PhoneCall.wrongAnswers += 1;
     }
 
     room1PhoneCall.questionIndex += 1;
-    if (room1PhoneCall.questionIndex >= static_cast<int>(scamCallQuestions.size())) {
+    if (room1PhoneCall.questionIndex >= static_cast<int>(room1PhoneCall.questionOrder.size())) {
         FinishRoom1PhoneCall();
     }
 }
@@ -351,13 +456,23 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
         return menu;
     }
 
-    int questionIndex = std::max(0, std::min(room1PhoneCall.questionIndex, static_cast<int>(scamCallQuestions.size()) - 1));
+    if (!Mouse::IsDown(0)) {
+        room1PhoneCall.answerClickConsumed = false;
+    }
+
+    if (room1PhoneCall.questionOrder.empty() ||
+        room1PhoneCall.answerOrders.size() != room1PhoneCall.questionOrder.size()) {
+        BuildRoom1PhoneCallQuestionOrder();
+    }
+
+    int orderIndex = std::max(0, std::min(room1PhoneCall.questionIndex, static_cast<int>(room1PhoneCall.questionOrder.size()) - 1));
+    int questionIndex = room1PhoneCall.questionOrder[orderIndex];
     const ScamCallQuestion& question = scamCallQuestions[questionIndex];
 
     UiLabel& progress = UI::AddLabel(
         *menu,
         "phone-progress",
-        "question " + std::to_string(questionIndex + 1) + " of " + std::to_string(scamCallQuestions.size()) +
+        "question " + std::to_string(orderIndex + 1) + " of " + std::to_string(room1PhoneCall.questionOrder.size()) +
             "  wrong " + std::to_string(room1PhoneCall.wrongAnswers) + "/2",
         vec2(0.0f, 0.0f),
         15.0f / zoom,
@@ -373,7 +488,9 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
     };
 
     const std::vector<std::string> letters = {"A", "B", "C", "D"};
-    for (int i = 0; i < static_cast<int>(question.answers.size()); ++i) {
+    const std::vector<int>& answerOrder = room1PhoneCall.answerOrders[orderIndex];
+    for (int i = 0; i < static_cast<int>(answerOrder.size()); ++i) {
+        int answerIndex = answerOrder[i];
         float y = 56.0f - static_cast<float>(i) * 58.0f;
         Button& answerButton = UI::AddButton(*menu, "phone-answer-" + std::to_string(i), letters[i], vec2(0.0f), vec2(24.0f, 22.0f), 0);
         answerButton.labelSize = 15.0f / zoom;
@@ -384,12 +501,12 @@ Menu* EnsureRoom1PhonePopupUiMenu(vec2 screen, float zoom, GLuint phoneTexture) 
         answerButton.dynamicPos = [y]() {
             return vec2(-88.0f, y);
         };
-        bool safeAnswer = question.answers[i].safe;
+        bool safeAnswer = question.answers[answerIndex].safe;
         answerButton.onClick = [safeAnswer]() {
             SelectRoom1PhoneAnswer(safeAnswer);
         };
 
-        UiLabel& answerLabel = UI::AddLabel(*menu, "phone-answer-label-" + std::to_string(i), question.answers[i].text, vec2(0.0f), 14.0f / zoom, false);
+        UiLabel& answerLabel = UI::AddLabel(*menu, "phone-answer-label-" + std::to_string(i), question.answers[answerIndex].text, vec2(0.0f), 14.0f / zoom, false);
         answerLabel.dynamicPos = [y]() {
             return vec2(-54.0f, y - 5.0f);
         };
@@ -1260,6 +1377,8 @@ void ApplyRemoteTaskProgressState(const std::string& serializedState,
 
 int RunCommunityApp()
 {
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
     std::vector<Tile> tiles;
     tiles = genWorld(vec2(120,100));
 
