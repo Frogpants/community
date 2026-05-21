@@ -21,7 +21,8 @@ namespace Minigames {
     constexpr float kWashDishesBubbleStartDelaySeconds = 3.0f;
     constexpr float kWashDishesBubbleSpawnMinSeconds = 1.0f;
     constexpr float kWashDishesBubbleSpawnMaxSeconds = 1.0f;
-    constexpr float kWashDishesBubbleLifeSeconds = 14.0f;
+    // Shorten bubble lifetime so missed bubbles disappear sooner (in seconds).
+    constexpr float kWashDishesBubbleLifeSeconds = 4.0f;
     constexpr float kLaundryFillPerSecond = 0.12f;
     constexpr float kLaundryDrainPerSecond = 0.04f;
     constexpr float kTaskCompletionAutoCloseSeconds = 3.0f;
@@ -862,7 +863,9 @@ namespace Minigames {
 
             for (Bubble& bubble : washDishes.bubbles) {
                 bubble.lifeFrames -= deltaTime;
-                bubble.pos.y += 1.2f * deltaTime;
+                // Increase vertical speed so bubbles rise noticeably faster (pixels/sec).
+                // Use deltaTime to make movement frame-rate independent.
+                bubble.pos.y += 480.0f * deltaTime;
             }
 
             int before = static_cast<int>(washDishes.bubbles.size());
