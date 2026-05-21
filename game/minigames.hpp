@@ -1138,7 +1138,8 @@ namespace Minigames {
             Image::DrawRect(bedCenter + vec2(0.0f, 10.0f), vec2(bedSize.x * 0.82f, bedSize.y * 0.58f), 0.78f, 0.68f, 0.58f, 0.80f, 0.0f);
         }
 
-        Text::DrawStringCentered("make the bed", vec2(0.0f, -panelHalf.y + 48.0f), 16.0f / zoom, 2.1f);
+        // Lowered so the blanket can start lower in the panel
+        Text::DrawStringCentered("make the bed", vec2(0.0f, -panelHalf.y + 18.0f), 16.0f / zoom, 2.1f);
 
         auto slotOccupied = [&](int slotIndex) {
             for (int pillowIndex = 0; pillowIndex < 2; ++pillowIndex) {
@@ -1249,7 +1250,8 @@ namespace Minigames {
 
         if (makeBed.phase == MakeBedPhase::PlaceBlanket || makeBed.phase == MakeBedPhase::Won) {
             if (makeBed.phase == MakeBedPhase::PlaceBlanket) {
-                Text::DrawStringCentered("now drag the blanket up onto the bed", vec2(0.0f, -panelHalf.y + 82.0f), 13.0f / zoom, 2.0f);
+                // Lowered so the blanket can start lower and still be visible
+                Text::DrawStringCentered("now drag the blanket up onto the bed", vec2(0.0f, -panelHalf.y + 52.0f), 13.0f / zoom, 2.0f);
             }
 
             for (int pillowIndex = 0; pillowIndex < 2; ++pillowIndex) {
@@ -1273,7 +1275,8 @@ namespace Minigames {
 
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket == -1) {
                 makeBed.blanketHomePosition = layout.blanketHome;
-                makeBed.blanketVelocity.y -= 4.2f * ::deltaTime;
+                // stronger idle gravity so the blanket settles lower when not grabbed
+                makeBed.blanketVelocity.y -= 6.0f * ::deltaTime;
                 makeBed.blanketPosition.y += makeBed.blanketVelocity.y * 60.0f * ::deltaTime;
                 if (makeBed.blanketPosition.y < makeBed.blanketHomePosition.y) {
                     makeBed.blanketPosition.y = makeBed.blanketHomePosition.y;
@@ -1291,8 +1294,10 @@ namespace Minigames {
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket != -1) {
                 if (Mouse::IsDown(0)) {
                     vec2 desired = mouseUI + makeBed.blanketDragOffset;
-                    // Follow the cursor directly to avoid jumpy motion.
-                    makeBed.blanketPosition = desired;
+                    // Add inertia to the blanket while dragging so it feels heavier.
+                    const float dragResponsiveness = 0.45f; // lower => heavier (more lag)
+                    makeBed.blanketPosition.x += (desired.x - makeBed.blanketPosition.x) * dragResponsiveness;
+                    makeBed.blanketPosition.y += (desired.y - makeBed.blanketPosition.y) * dragResponsiveness;
                     makeBed.blanketVelocity = vec2(0.0f);
                 } else {
                     bool crossedGuideLine = (makeBed.blanketPosition.y + blanketDrawSize.y) >= guidePos.y;
@@ -1302,7 +1307,8 @@ namespace Minigames {
                         makeBed.blanketPlaced = true;
                         makeBed.phase = MakeBedPhase::Won;
                     } else {
-                        makeBed.blanketVelocity = vec2(0.0f, -5.0f);
+                        // heavier blanket falls faster when released
+                        makeBed.blanketVelocity = vec2(0.0f, -8.0f);
                     }
                     makeBed.draggingBlanket = -1;
                 }
@@ -1333,8 +1339,8 @@ namespace Minigames {
             }
             glDisable(GL_SCISSOR_TEST);
 
-            // Draw the instruction text on top of the blanket so it's visible
-            Text::DrawStringCentered("drag blanket to this line", guidePos + vec2(0.0f, -18.0f), 14.0f / zoom, 1.4f);
+            // Draw the instruction text lower so the blanket can start lower and make sense visually
+            Text::DrawStringCentered("drag blanket to this line", guidePos + vec2(0.0f, -40.0f), 14.0f / zoom, 1.4f);
         }
 
         if (makeBed.phase == MakeBedPhase::Won) {
