@@ -373,10 +373,14 @@ namespace Minigames {
         layout.pillowHomes[0] = layout.bedCenter + vec2(-layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
         layout.pillowHomes[1] = layout.bedCenter + vec2(layout.bedSize.x * 1.40f, -layout.bedSize.y * 0.12f);
 
-        layout.blanketHome = layout.bedCenter + vec2(0.0f, -layout.bedSize.y * 0.38f);
-        layout.blanketTarget = layout.bedCenter + vec2(0.0f, layout.bedSize.y * 0.02f);
-        layout.blanketTargetSize = vec2(layout.bedSize.x * 0.42f, layout.bedSize.y * 0.26f);
-        layout.blanketDrawSize = vec2(layout.bedSize.x * 0.52f, layout.bedSize.y * 0.36f);
+        // Make the blanket larger while keeping room to clamp it inside the popup panel.
+        layout.blanketDrawSize = vec2(layout.bedSize.x * 0.78f, layout.bedSize.y * 0.58f);
+        // Start the blanket a little below the popup so players pull it into view.
+        layout.blanketHome = vec2(0.0f, -panelHalf.y + layout.blanketDrawSize.y - 20.0f);
+        // Place the blanket target higher on the bed.
+        layout.blanketTarget = layout.bedCenter + vec2(0.0f, layout.bedSize.y * 0.10f);
+        // Make the target area larger.
+        layout.blanketTargetSize = vec2(layout.bedSize.x * 0.64f, layout.bedSize.y * 0.40f);
         return layout;
     }
 
@@ -1261,6 +1265,11 @@ namespace Minigames {
             }
 
             Image::DrawRect(blanketTarget, blanketTargetSize, 0.98f, 0.96f, 0.90f, 0.16f, 0.0f);
+            // Draw a larger guide line right below the pillows.
+            float guideHeight = 16.0f;
+            float pillowBottomY = std::min(pillowSlots[0].y - pillowSlotSize.y, pillowSlots[1].y - pillowSlotSize.y);
+            vec2 guidePos = vec2(0.0f, pillowBottomY - 6.0f);
+            Image::DrawRect(guidePos, vec2(blanketTargetSize.x * 1.08f, guideHeight), 0.92f, 0.88f, 0.75f, 1.0f, 0.0f);
 
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket == -1) {
                 makeBed.blanketHomePosition = layout.blanketHome;
@@ -1282,15 +1291,12 @@ namespace Minigames {
             if (makeBed.phase == MakeBedPhase::PlaceBlanket && makeBed.draggingBlanket != -1) {
                 if (Mouse::IsDown(0)) {
                     vec2 desired = mouseUI + makeBed.blanketDragOffset;
-                    makeBed.blanketPosition.x = desired.x;
-                    if (desired.y > makeBed.blanketHomePosition.y) {
-                        makeBed.blanketPosition.y = makeBed.blanketHomePosition.y + (desired.y - makeBed.blanketHomePosition.y) * 0.58f;
-                    } else {
-                        makeBed.blanketPosition.y = desired.y;
-                    }
+                    // Follow the cursor directly to avoid jumpy motion.
+                    makeBed.blanketPosition = desired;
                     makeBed.blanketVelocity = vec2(0.0f);
                 } else {
-                    bool placed = BoxCollide(makeBed.blanketPosition, blanketDrawSize, blanketTarget, blanketTargetSize);
+                    bool crossedGuideLine = (makeBed.blanketPosition.y + blanketDrawSize.y) >= guidePos.y;
+                    bool placed = crossedGuideLine && BoxCollide(makeBed.blanketPosition, blanketDrawSize, blanketTarget, blanketTargetSize);
                     if (placed) {
                         makeBed.blanketPosition = blanketTarget;
                         makeBed.blanketPlaced = true;
@@ -1307,11 +1313,28 @@ namespace Minigames {
                 ? makeBed.blanketTextures[makeBed.blanketTextureIndex]
                 : 0;
 
+            // Clip blanket rendering to popup panel bounds so any out-of-frame portion is hidden.
+            int viewport[4] = {0, 0, 0, 0};
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            float unitsToPixels = zoom * 0.5f;
+            int panelPixelWidth = static_cast<int>(panelHalf.x * 2.0f * unitsToPixels);
+            int panelPixelHeight = static_cast<int>(panelHalf.y * 2.0f * unitsToPixels);
+            int scissorX = viewport[0] + (viewport[2] - panelPixelWidth) / 2;
+            int scissorY = viewport[1] + (viewport[3] - panelPixelHeight) / 2;
+            if (panelPixelWidth < 1) panelPixelWidth = 1;
+            if (panelPixelHeight < 1) panelPixelHeight = 1;
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(scissorX, scissorY, panelPixelWidth, panelPixelHeight);
+
             if (blanketTex != 0) {
                 Image::Draw(blanketTex, makeBed.blanketPosition, blanketDrawSize, 0.0f);
             } else {
                 Image::DrawRect(makeBed.blanketPosition, blanketDrawSize, 0.55f, 0.38f, 0.28f, 1.0f, 0.0f);
             }
+            glDisable(GL_SCISSOR_TEST);
+
+            // Draw the instruction text on top of the blanket so it's visible
+            Text::DrawStringCentered("drag blanket to this line", guidePos + vec2(0.0f, -18.0f), 14.0f / zoom, 1.4f);
         }
 
         if (makeBed.phase == MakeBedPhase::Won) {
