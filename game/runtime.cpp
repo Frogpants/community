@@ -2792,8 +2792,7 @@ int RunCommunityApp()
         multiplayer.drawRemotePlayers(activePlayerTexture, player.room);
         for (const Character& c : characters) {
             if (ShouldDrawCharacterInCurrentRoom(c, player.room)) {
-                float charDrawSize = 150.0f * 0.25f;
-                Image::Draw(c.texture, c.pos, charDrawSize);
+                Image::Draw(c.texture, c.pos, playerDrawSize);
             }
         }
 
@@ -2953,6 +2952,11 @@ int RunCommunityApp()
                     completedCharacter->level = completedCharacter->tasksCompleted * taskLevelIncrease;
                     if (completedTask.room == 1 && completedCharacter->tasksCompleted == 1) {
                         TriggerRoom1PhoneCall(completedTask);
+                    }
+                    if (roomUnlockNotification.taskTutorialActive) {
+                        roomUnlockNotification.visible = false;
+                        roomUnlockNotification.taskTutorialActive = false;
+                        UI::RemoveMenu("room-unlock-notification");
                     }
                     if (completedCharacter->tasksCompleted >= static_cast<int>(completedCharacter->tasks.size())) {
                         vec2 spawnedTreePos = vec2(0.0f);
