@@ -600,6 +600,15 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         title.spacing = 1.7f;
         UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "click e to interact", vec2(0.0f, -8.0f), 18.0f / zoom, true);
         detail.spacing = 1.7f;
+    } else if (roomUnlockNotification.taskTutorialActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "new tasks unlocked", vec2(0.0f, 36.0f), 21.0f / zoom, true);
+        title.spacing = 1.7f;
+
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "check the task popups for details", vec2(0.0f, 4.0f), 18.0f / zoom, true);
+        detail.spacing = 1.7f;
+
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "click e to interact", vec2(0.0f, -26.0f), 17.0f / zoom, true);
+        instruction.spacing = 1.7f;
     } else if (roomUnlockNotification.seniorTutorialActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "talk to your senior to find tasks", vec2(0.0f, 36.0f), 19.0f / zoom, true);
         title.spacing = 1.7f;
@@ -608,15 +617,7 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
 
         UiLabel& detail = UI::AddLabel(*menu, "message-line-3", "click e to interact", vec2(0.0f, -28.0f), 17.0f / zoom, true);
         detail.spacing = 1.7f;
-    } else if (roomUnlockNotification.taskTutorialActive) {
-        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "click again on your senior", vec2(0.0f, 34.0f), 18.0f / zoom, true);
-        title.spacing = 1.7f;
-
-        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "for more tasks or click e", vec2(0.0f, 4.0f), 18.0f / zoom, true);
-        detail.spacing = 1.7f;
-
-        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "on highlighted tasks to complete them", vec2(0.0f, -26.0f), 17.0f / zoom, true);
-        instruction.spacing = 1.7f;
+        
     } else if (roomUnlockNotification.sanDiegoOasisActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "san diego oasis", vec2(0.0f, 34.0f), 21.0f / zoom, true);
         title.spacing = 1.7f;
@@ -1345,12 +1346,33 @@ std::string getRandomUsername() {
     return adjectives[adjectiveIndex] + "-" + nouns[nounIndex] + std::to_string(suffix);
 }
 
-std::vector<std::string> getCharacterTasks(int roomId) {
-    if (roomId == 1) {
-        return {"do laundry", "make bed"};
+std::vector<std::string> getRandomTaskSelection(const std::vector<std::string>& availableTasks, int taskCount) {
+    std::vector<std::string> remainingTasks = availableTasks;
+    std::vector<std::string> selectedTasks;
+    int targetCount = std::min(taskCount, static_cast<int>(remainingTasks.size()));
+
+    for (int i = 0; i < targetCount; ++i) {
+        int selectedIndex = randInt(0, static_cast<int>(remainingTasks.size()) - 1);
+        selectedTasks.push_back(remainingTasks[selectedIndex]);
+        remainingTasks.erase(remainingTasks.begin() + selectedIndex);
     }
 
-    return {"wash dishes", "take out trash", "do laundry", "make bed"};
+    return selectedTasks;
+}
+
+std::vector<std::string> getCharacterTasks(int roomId) {
+    const std::vector<std::string> allTasks = {
+        "wash dishes",
+        "take out trash",
+        "do laundry",
+        "make bed"
+    };
+
+    if (roomId == 1) {
+        return getRandomTaskSelection(allTasks, 2);
+    }
+
+    return allTasks;
 }
 
 Character makeCharacterForRoom(int roomId, int stageIndex) {
