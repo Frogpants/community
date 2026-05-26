@@ -133,6 +133,7 @@ struct RoomUnlockNotificationState {
     bool taskTutorialActive = false;
     bool taskTutorialShown = false;
     bool treeLifeActive = false;
+    bool sanDiegoOasisActive = false;
     bool treeLifeReturnPromptActive = false;
     int treeLifeReturnPromptDelayFrames = 0;
     bool treePreviewActive = false;
@@ -409,6 +410,7 @@ void DismissRoomUnlockNotification() {
     roomUnlockNotification.seniorTutorialActive = false;
     roomUnlockNotification.taskTutorialActive = false;
     roomUnlockNotification.treeLifeActive = false;
+    roomUnlockNotification.sanDiegoOasisActive = false;
     roomUnlockNotification.treeLifeReturnPromptActive = false;
     roomUnlockNotification.treeLifeReturnPromptDelayFrames = 0;
     roomUnlockNotification.treePreviewActive = false;
@@ -513,6 +515,20 @@ void ShowTaskTutorialNotification() {
     roomUnlockNotification.taskTutorialShown = true;
 }
 
+void ShowSanDiegoOasisNotification() {
+    if (!gameNotificationsEnabled) {
+        return;
+    }
+
+    roomUnlockNotification.visible = true;
+    roomUnlockNotification.tutorialActive = false;
+    roomUnlockNotification.seniorTutorialActive = false;
+    roomUnlockNotification.taskTutorialActive = false;
+    roomUnlockNotification.treeLifeActive = false;
+    roomUnlockNotification.sanDiegoOasisActive = true;
+    roomUnlockNotification.activeRoom = 0;
+}
+
 void QueueRoomUnlockNotification(int roomId) {
     if (!gameNotificationsEnabled || roomId < 2) {
         return;
@@ -587,7 +603,6 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
     } else if (roomUnlockNotification.seniorTutorialActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "talk to your senior to find tasks", vec2(0.0f, 36.0f), 19.0f / zoom, true);
         title.spacing = 1.7f;
-
         UiLabel& instruction = UI::AddLabel(*menu, "message-line-2", "to help them with", vec2(0.0f, 4.0f), 19.0f / zoom, true);
         instruction.spacing = 1.7f;
 
@@ -601,6 +616,15 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         detail.spacing = 1.7f;
 
         UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "on highlighted tasks to complete them", vec2(0.0f, -26.0f), 17.0f / zoom, true);
+        instruction.spacing = 1.7f;
+    } else if (roomUnlockNotification.sanDiegoOasisActive) {
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "san diego oasis", vec2(0.0f, 34.0f), 21.0f / zoom, true);
+        title.spacing = 1.7f;
+
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "supports connection, wellness,", vec2(0.0f, 4.0f), 18.0f / zoom, true);
+        detail.spacing = 1.7f;
+
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "and purpose for older adults", vec2(0.0f, -26.0f), 18.0f / zoom, true);
         instruction.spacing = 1.7f;
     } else if (roomUnlockNotification.treeLifeActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "your help brought new life", vec2(0.0f, 34.0f), 19.0f / zoom, true);
@@ -1321,7 +1345,11 @@ std::string getRandomUsername() {
     return adjectives[adjectiveIndex] + "-" + nouns[nounIndex] + std::to_string(suffix);
 }
 
-std::vector<std::string> getCharacterTasks() {
+std::vector<std::string> getCharacterTasks(int roomId) {
+    if (roomId == 1) {
+        return {"do laundry", "make bed"};
+    }
+
     return {"wash dishes", "take out trash", "do laundry", "make bed"};
 }
 
@@ -1340,7 +1368,7 @@ Character makeCharacterForRoom(int roomId, int stageIndex) {
     c.tasksGiven = 0;
     c.tasksCompleted = 0;
     c.nextStageSpawned = false;
-    c.tasks = getCharacterTasks();
+    c.tasks = getCharacterTasks(roomId);
     return c;
 }
 
@@ -1371,11 +1399,12 @@ int spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int&
         return -1;
     }
 
+    completedCharacter.nextStageSpawned = true;
+
     const int roomId = nextRoomId;
 
     if (roomId - 1 < 0 || roomId - 1 >= static_cast<int>(hubDoorPositions.size())) {
         std::cout << "no more identifiable houses for another door" << std::endl;
-        completedCharacter.nextStageSpawned = true;
         return -1;
     }
 
@@ -1389,7 +1418,6 @@ int spawnNextStage(std::vector<Character>& chars, std::vector<Door>& doors, int&
     } else {
         chars.back().texture = Image::Load("assets/npcs/character.png");
     }
-    completedCharacter.nextStageSpawned = true;
     return roomId;
 }
 
@@ -1400,7 +1428,7 @@ void MoveCompletedCharacterToHub(Character& character, const std::vector<vec2>& 
 
     int hubIndex = character.room - 1;
     if (hubIndex >= 0 && hubIndex < static_cast<int>(hubDoorPositions.size())) {
-        character.pos = hubDoorPositions[hubIndex];
+        character.pos = hubDoorPositions[hubIndex] + vec2(-64.0, -16.0);
     }
     character.target = character.pos;
     character.roamCenter = character.pos;
@@ -1408,12 +1436,28 @@ void MoveCompletedCharacterToHub(Character& character, const std::vector<vec2>& 
     character.isRoaming = false;
 }
 
-bool ShouldDrawCharacterInCurrentRoom(const Character& character, int playerRoom) {
-    if (character.room == playerRoom) {
-        return true;
+bool ShouldDrawCharacterInCurrentRoom(const Character& character, int playerRoom);
+
+Character* getInteractableCharacter(std::vector<Character>& chars, int playerRoom, const vec2& playerPos, const vec2& playerDim) {
+    for (Character& character : chars) {
+        if (!ShouldDrawCharacterInCurrentRoom(character, playerRoom)) {
+            continue;
+        }
+
+        if (BoxCollide(playerPos, playerDim, character.pos, character.dim)) {
+            return &character;
+        }
     }
 
-    return playerRoom == 0 && character.nextStageSpawned;
+    return nullptr;
+}
+
+bool ShouldDrawCharacterInCurrentRoom(const Character& character, int playerRoom) {
+    if (character.nextStageSpawned) {
+        return playerRoom == 0;
+    }
+
+    return character.room == playerRoom;
 }
 
 void drawTreeSpawnMarkerTile(const vec2& pos)
@@ -1614,27 +1658,36 @@ bool addTaskForCharacter(Character& character, Player& localPlayer) {
         return false;
     }
 
-    int taskId = character.tasksGiven;
-    Task task;
-    task.id = taskId;
-    task.name = character.tasks[taskId];
-    task.assignedBy = character.name;
-    task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
-    task.room = character.room;
-    ApplyTaskPositionOverride(task);
+    bool grantedAnyTask = false;
+    for (int taskId = character.tasksGiven; taskId < static_cast<int>(character.tasks.size()); ++taskId) {
+        Task task;
+        task.id = taskId;
+        task.name = character.tasks[taskId];
+        task.assignedBy = character.name;
+        task.pos = GetTaskSpawnPosition(character.tasks[taskId], taskId);
+        task.room = character.room;
+        ApplyTaskPositionOverride(task);
 
-    for (const Task& existing : objectives) {
-        if (existing.room == task.room && existing.id == task.id) {
-            return false;
+        bool objectiveAlreadyExists = false;
+        for (const Task& existing : objectives) {
+            if (existing.room == task.room && existing.id == task.id) {
+                objectiveAlreadyExists = true;
+                break;
+            }
         }
+
+        if (objectiveAlreadyExists) {
+            continue;
+        }
+
+        objectives.push_back(task);
+        localPlayer.tasks.push_back(character.tasks[taskId]);
+        WebFrontendTaskSaved(task.assignedBy.c_str(), task.name.c_str(), task.room, task.id, 0);
+        grantedAnyTask = true;
     }
 
-    objectives.push_back(task);
-
-    localPlayer.tasks.push_back(character.tasks[taskId]);
-    character.tasksGiven += 1;
-    WebFrontendTaskSaved(task.assignedBy.c_str(), task.name.c_str(), task.room, task.id, 0);
-    return true;
+    character.tasksGiven = static_cast<int>(character.tasks.size());
+    return grantedAnyTask;
 }
 
 void EnsureObjectiveExists(const Character& character, int taskId) {
@@ -1780,8 +1833,12 @@ void ApplyRemoteTaskProgressState(const std::string& serializedState,
 
         if (character->tasksCompleted >= maxTasks && !character->isRoaming) {
             spawnTreeOnMarkerForRoom(tiles, trees, character->room);
+            const int completedRoom = character->room;
             spawnNextStage(chars, doors, nextRoomId, *character, hubDoorPositions);
-            MoveCompletedCharacterToHub(*character, hubDoorPositions);
+            Character* parkedCharacter = getCharacterForRoom(chars, completedRoom);
+            if (parkedCharacter != nullptr) {
+                MoveCompletedCharacterToHub(*parkedCharacter, hubDoorPositions);
+            }
         }
     }
 }
@@ -2630,14 +2687,20 @@ int RunCommunityApp()
                 }
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
+                Character* interactCharacter = getInteractableCharacter(characters, player.room, player.pos, player.dim);
+                if (interactCharacter == nullptr) {
+                    interactCharacter = currentCharacter;
+                }
 
-                if (!modalOpen && currentCharacter != nullptr && BoxCollide(player.pos, player.dim, currentCharacter->pos, currentCharacter->dim) && Input::IsPressed("e")) {
-                    if (roomUnlockNotification.npcArrowRoom == currentCharacter->room) {
+                if (!modalOpen && interactCharacter != nullptr && Input::IsPressed("e")) {
+                    if (roomUnlockNotification.npcArrowRoom == interactCharacter->room) {
                         roomUnlockNotification.npcArrowRoom = -1;
                     }
-                    if (currentCharacter->isRoaming) {
+                    if (interactCharacter->nextStageSpawned) {
+                        ShowSanDiegoOasisNotification();
+                    } else if (interactCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
-                    } else if (addTaskForCharacter(*currentCharacter, player)) {
+                    } else if (addTaskForCharacter(*interactCharacter, player)) {
                         std::cout << "Task added: " << player.tasks.back() << std::endl;
                         ShowTaskTutorialNotification();
                     } else {
@@ -2938,6 +3001,8 @@ int RunCommunityApp()
             if (activeTaskIndex >= 0 && activeTaskIndex < static_cast<int>(objectives.size())) {
                 Task completedTask = objectives[activeTaskIndex];
                 Character* completedCharacter = getCharacterForRoom(characters, completedTask.room);
+                const int completedRoom = completedTask.room;
+                std::string completedCharacterName = (completedCharacter != nullptr) ? completedCharacter->name : std::string();
 
                 objectives.erase(objectives.begin() + activeTaskIndex);
                 if (!completedTask.name.empty()) {
@@ -2965,7 +3030,10 @@ int RunCommunityApp()
                             ShowTreeLifeNotification(completedCharacter->room, spawnedTreePos);
                         }
                         int unlockedRoom = spawnNextStage(characters, doors, nextRoomId, *completedCharacter, hubDoorPositions);
-                        MoveCompletedCharacterToHub(*completedCharacter, hubDoorPositions);
+                        Character* parkedCharacter = getCharacterForRoom(characters, completedRoom);
+                        if (parkedCharacter != nullptr) {
+                            MoveCompletedCharacterToHub(*parkedCharacter, hubDoorPositions);
+                        }
                         QueueRoomUnlockNotification(unlockedRoom);
                         if (player.room == 0) {
                             ShowNextRoomUnlockNotification();
@@ -2977,8 +3045,8 @@ int RunCommunityApp()
                 if (completedBy.empty()) {
                     completedBy = completedTask.assignedBy;
                 }
-                if (completedBy.empty() && completedCharacter != nullptr) {
-                    completedBy = completedCharacter->name;
+                if (completedBy.empty() && !completedCharacterName.empty()) {
+                    completedBy = completedCharacterName;
                 }
 
                 WebFrontendTaskCompleted(completedBy.c_str(), completedTask.name.c_str(), completedTask.room, completedTask.id);
