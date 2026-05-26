@@ -2693,7 +2693,8 @@ int RunCommunityApp()
                 }
                 camera.follow();
 
-                bool modalOpen = Minigames::IsTaskOpen() || roomUnlockNotification.visible;
+                bool phoneCallModalOpen = room1PhoneCall.armed && room1PhoneCall.delaySeconds <= 0.0f;
+                bool modalOpen = Minigames::IsTaskOpen() || roomUnlockNotification.visible || phoneCallModalOpen;
 
                 if (!modalOpen) {
                     player.controls(frameScale);
@@ -2776,7 +2777,7 @@ int RunCommunityApp()
                     }
                 }
 
-                if (currentCharacter != nullptr && currentCharacter->isRoaming) {
+                if (!modalOpen && currentCharacter != nullptr && currentCharacter->isRoaming) {
                     vec2 oldCharacterPos = currentCharacter->pos;
                     currentCharacter->roam();
                     if (collidesWithCollisionMarker(currentCharacter->pos, currentCharacter->dim, currentCharacter->room, tiles)) {
