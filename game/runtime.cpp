@@ -2214,6 +2214,7 @@ int RunCommunityApp()
 
     // Main Menu
 
+    GLuint logoTexture = Image::Load("assets/logo.png");
     GLuint playButton = Image::Load("assets/menu/play-button.png");
 
     MultiplayerClient multiplayer;
@@ -2236,10 +2237,24 @@ int RunCommunityApp()
         return vec2(screen.x / zoom, screen.y / zoom);
     };
 
-    UiLabel& menuTitle = UI::AddLabel(mainMenu, "menu-title", "Oasis", vec2(0.0f, 180.0f), 42.0f / zoom, true);
-    menuTitle.dynamicPos = [&]() {
-        return vec2(0.0f, 180.0f + 5.0f * std::sin(timer * 0.08f));
-    };
+    if (logoTexture != 0) {
+        int logoWidth = 0;
+        int logoHeight = 0;
+        vec2 logoSize = vec2(360.0f, 360.0f);
+        if (Image::GetTextureSize(logoTexture, logoWidth, logoHeight) && logoWidth > 0 && logoHeight > 0) {
+            float aspect = static_cast<float>(logoWidth) / static_cast<float>(logoHeight);
+            float maxWidth = 360.0f;
+            logoSize = vec2(maxWidth, maxWidth / aspect);
+        }
+
+        UiImage& logo = UI::AddImage(mainMenu, "menu-logo", logoTexture, vec2(-120.0f, 180.0f), logoSize);
+        logo.dynamicPos = [logoSize]() {
+            return vec2(-120.0f, 180.0f + 5.0f * std::sin(timer * 0.08f));
+        };
+        logo.dynamicDim = [logoSize]() {
+            return logoSize;
+        };
+    }
 
     UI::AddLabel(mainMenu, "menu-subtitle", "Little acts can make big differences", vec2(0.0f, 56.0f), 18.0f / zoom, true);
     UI::AddLabel(mainMenu, "menu-story", "San Diego Oasis helps older adults stay connected, supported, and engaged.", vec2(0.0f, -220.0f), 15.0f / zoom, true);
