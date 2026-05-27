@@ -1603,13 +1603,23 @@ void MoveCompletedCharacterToHub(Character& character, const std::vector<vec2>& 
 
 bool ShouldDrawCharacterInCurrentRoom(const Character& character, int playerRoom);
 
+vec2 GetCharacterInteractionHitbox(const Character& character) {
+    const float interactionScale = 0.35f;
+    const float minHalfExtent = 16.0f;
+    return vec2(
+        std::max(minHalfExtent, character.dim.x * interactionScale),
+        std::max(minHalfExtent, character.dim.y * interactionScale)
+    );
+}
+
 Character* getInteractableCharacter(std::vector<Character>& chars, int playerRoom, const vec2& playerPos, const vec2& playerDim) {
     for (Character& character : chars) {
         if (!ShouldDrawCharacterInCurrentRoom(character, playerRoom)) {
             continue;
         }
 
-        if (BoxCollide(playerPos, playerDim, character.pos, character.dim)) {
+        vec2 interactionHitbox = GetCharacterInteractionHitbox(character);
+        if (BoxCollide(playerPos, playerDim, character.pos, interactionHitbox)) {
             return &character;
         }
     }
@@ -2861,16 +2871,14 @@ int RunCommunityApp()
 
                 Character* currentCharacter = getCharacterForRoom(characters, player.room);
                 Character* interactCharacter = getInteractableCharacter(characters, player.room, player.pos, player.dim);
-                if (interactCharacter == nullptr) {
-                    interactCharacter = currentCharacter;
-                }
 
                 if (!modalOpen && interactCharacter != nullptr && Input::IsPressed("e")) {
                     if (roomUnlockNotification.npcArrowRoom == interactCharacter->room) {
                         roomUnlockNotification.npcArrowRoom = -1;
                     }
                     if (interactCharacter->nextStageSpawned) {
-                        if (BoxCollide(player.pos, player.dim, interactCharacter->pos, interactCharacter->dim)) {
+                        vec2 interactionHitbox = GetCharacterInteractionHitbox(*interactCharacter);
+                        if (BoxCollide(player.pos, player.dim, interactCharacter->pos, interactionHitbox)) {
                             ShowSanDiegoOasisNotification();
                         }
                     } else if (interactCharacter->isRoaming) {
