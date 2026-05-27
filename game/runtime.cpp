@@ -2220,6 +2220,8 @@ int RunCommunityApp()
         return vec2(0.0f, -80.0f + 10.0f * std::sin(timer * 0.1f));
     };
     playMenuButton.onClick = [&]() {
+        Minigames::CloseTask();
+        Minigames::DeleteTaskUI();
         inMainMenu = false;
         inSettingsMenu = true;
     };
@@ -2309,6 +2311,8 @@ int RunCommunityApp()
         return vec2(170.0f, 34.0f) / zoom;
     };
     hudSettingsButton.onClick = [&]() {
+        Minigames::CloseTask();
+        Minigames::DeleteTaskUI();
         inSettingsMenu = true;
     };
     UiLabel& hudSettingsLabel = UI::AddLabel(hudSettingsMenu, "settings-label", "settings", vec2(0.0f), 16.0f / zoom, true);
