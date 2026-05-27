@@ -164,7 +164,6 @@ std::vector<TaskPositionOverride> taskPositionOverrides;
 struct Room1PhoneCallState {
     bool armed = false;
     bool answered = false;
-    bool triggeredOnce = false;
     bool finished = false;
     bool playerScammed = false;
     float delaySeconds = 1.0f;
@@ -181,6 +180,16 @@ struct Room1PhoneCallState {
 };
 
 Room1PhoneCallState room1PhoneCall;
+
+struct PendingScamCallRoom {
+    Task task;
+};
+
+std::vector<PendingScamCallRoom> pendingScamCallRooms;
+std::vector<int> scamCallTriggeredRooms;
+float scamCallAttemptTimerSeconds = 0.0f;
+const int kScamCallChancePercent = 80;
+const float kScamCallAttemptIntervalSeconds = 1.0f;
 
 struct ScamCallAnswer {
     std::string text;
@@ -356,13 +365,16 @@ void CloseRoom1PhoneCall() {
 }
 
 void TriggerRoom1PhoneCall(const Task& completedTask) {
-    if (room1PhoneCall.armed || room1PhoneCall.triggeredOnce) {
+    if (room1PhoneCall.armed) {
         return;
+    }
+
+    if (std::find(scamCallTriggeredRooms.begin(), scamCallTriggeredRooms.end(), completedTask.room) == scamCallTriggeredRooms.end()) {
+        scamCallTriggeredRooms.push_back(completedTask.room);
     }
 
     room1PhoneCall.armed = true;
     room1PhoneCall.answered = false;
-    room1PhoneCall.triggeredOnce = true;
     room1PhoneCall.finished = false;
     room1PhoneCall.playerScammed = false;
     room1PhoneCall.delaySeconds = 1.0f;
@@ -398,6 +410,52 @@ void SelectRoom1PhoneAnswer(bool safeAnswer) {
     room1PhoneCall.questionIndex += 1;
     if (room1PhoneCall.questionIndex >= static_cast<int>(room1PhoneCall.questionOrder.size())) {
         FinishRoom1PhoneCall();
+    }
+}
+
+bool HasTriggeredScamCallForRoom(int roomId) {
+    return std::find(scamCallTriggeredRooms.begin(), scamCallTriggeredRooms.end(), roomId) != scamCallTriggeredRooms.end();
+}
+
+bool HasPendingScamCallForRoom(int roomId) {
+    for (const PendingScamCallRoom& pendingRoom : pendingScamCallRooms) {
+        if (pendingRoom.task.room == roomId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void QueueScamCallForRoom(const Task& completedTask) {
+    if (completedTask.room <= 0 || HasTriggeredScamCallForRoom(completedTask.room) || HasPendingScamCallForRoom(completedTask.room)) {
+        return;
+    }
+
+    PendingScamCallRoom pendingRoom;
+    pendingRoom.task = completedTask;
+    pendingScamCallRooms.push_back(pendingRoom);
+}
+
+void UpdatePendingScamCalls(float deltaTime, bool canAttempt) {
+    if (!canAttempt || room1PhoneCall.armed || pendingScamCallRooms.empty()) {
+        return;
+    }
+
+    scamCallAttemptTimerSeconds += deltaTime;
+    while (scamCallAttemptTimerSeconds >= kScamCallAttemptIntervalSeconds && !pendingScamCallRooms.empty() && !room1PhoneCall.armed) {
+        scamCallAttemptTimerSeconds -= kScamCallAttemptIntervalSeconds;
+
+        for (size_t pendingIndex = 0; pendingIndex < pendingScamCallRooms.size(); ++pendingIndex) {
+            const Task task = pendingScamCallRooms[pendingIndex].task;
+            if (randInt(1, 100) > kScamCallChancePercent) {
+                continue;
+            }
+
+            TriggerRoom1PhoneCall(task);
+            pendingScamCallRooms.erase(pendingScamCallRooms.begin() + static_cast<int>(pendingIndex));
+            return;
+        }
     }
 }
 
@@ -2749,6 +2807,9 @@ int RunCommunityApp()
                 }
                 camera.follow();
 
+                bool canAttemptScamCall = !Minigames::IsTaskOpen() && !roomUnlockNotification.visible && !room1PhoneCall.armed;
+                UpdatePendingScamCalls(static_cast<float>(deltaTime), canAttemptScamCall);
+
                 bool phoneCallModalOpen = room1PhoneCall.armed && room1PhoneCall.delaySeconds <= 0.0f;
                 bool modalOpen = Minigames::IsTaskOpen() || roomUnlockNotification.visible || phoneCallModalOpen;
 
@@ -3096,8 +3157,8 @@ int RunCommunityApp()
                 if (completedCharacter != nullptr) {
                     completedCharacter->tasksCompleted = std::min(completedCharacter->tasksCompleted + 1, static_cast<int>(completedCharacter->tasks.size()));
                     completedCharacter->level = completedCharacter->tasksCompleted * taskLevelIncrease;
-                    if (completedTask.room == 1 && completedCharacter->tasksCompleted == 1) {
-                        TriggerRoom1PhoneCall(completedTask);
+                    if (completedCharacter->tasksCompleted == 1) {
+                        QueueScamCallForRoom(completedTask);
                     }
                     if (roomUnlockNotification.taskTutorialActive) {
                         roomUnlockNotification.visible = false;
