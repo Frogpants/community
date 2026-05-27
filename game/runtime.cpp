@@ -1618,7 +1618,7 @@ Character* getInteractableCharacter(std::vector<Character>& chars, int playerRoo
             continue;
         }
 
-        vec2 interactionHitbox = GetCharacterInteractionHitbox(character);
+        vec2 interactionHitbox = (playerRoom == 0) ? character.dim : GetCharacterInteractionHitbox(character);
         if (BoxCollide(playerPos, playerDim, character.pos, interactionHitbox)) {
             return &character;
         }
@@ -2893,9 +2893,14 @@ int RunCommunityApp()
                         roomUnlockNotification.npcArrowRoom = -1;
                     }
                     if (interactCharacter->nextStageSpawned) {
-                        vec2 interactionHitbox = GetCharacterInteractionHitbox(*interactCharacter);
+                        vec2 interactionHitbox = (player.room == 0) ? interactCharacter->dim : GetCharacterInteractionHitbox(*interactCharacter);
                         if (BoxCollide(player.pos, player.dim, interactCharacter->pos, interactionHitbox)) {
                             std::cout << "Next stage unlocked." << std::endl;
+                            if (player.room == 0) {
+                                ShowSanDiegoOasisNotification();
+                            } else {
+                                ShowNextRoomUnlockNotification();
+                            }
                         }
                     } else if (interactCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
