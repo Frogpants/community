@@ -569,6 +569,12 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         156.0f
     );
     const bool treeLifeMode = roomUnlockNotification.treeLifeActive;
+    const bool sanDiegoMode = roomUnlockNotification.sanDiegoOasisActive;
+    const vec2 dialogueDim = vec2(
+        std::min(fullSize.x * 0.90f, 920.0f),
+        132.0f
+    );
+    const vec2 dialoguePos = vec2(0.0f, -fullSize.y * 0.34f);
 
     if (!treeLifeMode) {
         UiPanel& overlay = UI::AddPanel(*menu, "overlay", vec2(0.0f), fullSize, vec4(0.0f, 0.0f, 0.0f, 0.12f));
@@ -576,22 +582,31 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
             return fullSize;
         };
 
-        UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", vec2(7.0f, -7.0f), popupHalf, vec4(0.22f, 0.25f, 0.20f, 0.35f));
-        shadow.dynamicDim = [popupHalf]() {
-            return popupHalf;
+        const vec2 panelDim = sanDiegoMode ? dialogueDim : popupHalf;
+        const vec2 panelPos = sanDiegoMode ? dialoguePos : vec2(0.0f);
+
+        UiPanel& shadow = UI::AddPanel(*menu, "panel-shadow", panelPos + vec2(8.0f, -8.0f), panelDim, vec4(0.22f, 0.25f, 0.20f, 0.35f));
+        shadow.dynamicPos = [panelPos]() {
+            return panelPos + vec2(8.0f, -8.0f);
+        };
+        shadow.dynamicDim = [panelDim]() {
+            return panelDim;
         };
 
-        UiPanel& body = UI::AddPanel(*menu, "panel-body", vec2(0.0f), popupHalf, vec4(0.88f, 0.93f, 0.82f, 1.0f));
-        body.dynamicDim = [popupHalf]() {
-            return popupHalf;
+        UiPanel& body = UI::AddPanel(*menu, "panel-body", panelPos, panelDim, vec4(0.88f, 0.93f, 0.82f, 1.0f));
+        body.dynamicPos = [panelPos]() {
+            return panelPos;
+        };
+        body.dynamicDim = [panelDim]() {
+            return panelDim;
         };
 
-        UiPanel& header = UI::AddPanel(*menu, "panel-highlight", vec2(0.0f, popupHalf.y - 18.0f), vec2(popupHalf.x - 18.0f, 9.0f), vec4(0.39f, 0.55f, 0.35f, 1.0f));
-        header.dynamicPos = [popupHalf]() {
-            return vec2(0.0f, popupHalf.y - 18.0f);
+        UiPanel& header = UI::AddPanel(*menu, "panel-highlight", panelPos + vec2(0.0f, panelDim.y - 16.0f), vec2(panelDim.x - 18.0f, 9.0f), vec4(0.39f, 0.55f, 0.35f, 1.0f));
+        header.dynamicPos = [panelPos, panelDim]() {
+            return panelPos + vec2(0.0f, panelDim.y - 16.0f);
         };
-        header.dynamicDim = [popupHalf]() {
-            return vec2(popupHalf.x - 18.0f, 9.0f);
+        header.dynamicDim = [panelDim]() {
+            return vec2(panelDim.x - 18.0f, 9.0f);
         };
     }
 
@@ -619,14 +634,55 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         detail.spacing = 1.7f;
         
     } else if (roomUnlockNotification.sanDiegoOasisActive) {
-        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "san diego oasis", vec2(0.0f, 34.0f), 21.0f / zoom, true);
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "San Diego Oasis", vec2(0.0f, 28.0f), 21.0f / zoom, false);
+        title.dynamicPos = [dialoguePos, dialogueDim]() {
+            return dialoguePos + vec2(-dialogueDim.x * 0.5f + 28.0f, 28.0f);
+        };
         title.spacing = 1.7f;
 
-        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "supports connection, wellness,", vec2(0.0f, 4.0f), 18.0f / zoom, true);
-        detail.spacing = 1.7f;
+        // Combine the sentence pieces into a single wrapped label and left-align it inside the dialogue box.
+        std::string combined = "supports connection, wellness, and purpose for older adults.";
+        float contentSize = 18.0f / zoom;
+        float contentSpacing = 1.7f;
 
-        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "and purpose for older adults", vec2(0.0f, -26.0f), 18.0f / zoom, true);
-        instruction.spacing = 1.7f;
+        // Compute max characters per line using monospaced glyph metrics
+        float charSpacing = contentSize * contentSpacing;
+        float availableWidth = dialogueDim.x - 56.0f; // 28px padding both sides
+        int maxCharsPerLine = std::max(1, static_cast<int>(std::floor(availableWidth / charSpacing)));
+
+        // Simple word-wrapping
+        std::vector<std::string> words;
+        {
+            std::istringstream iss(combined);
+            std::string w;
+            while (iss >> w) words.push_back(w);
+        }
+        std::string wrapped;
+        std::string line;
+        for (size_t i = 0; i < words.size(); ++i) {
+            const std::string& w = words[i];
+            if (line.empty()) {
+                line = w;
+            } else {
+                if (static_cast<int>(line.size() + 1 + w.size()) <= maxCharsPerLine) {
+                    line += " " + w;
+                } else {
+                    if (!wrapped.empty()) wrapped += "\n";
+                    wrapped += line;
+                    line = w;
+                }
+            }
+        }
+        if (!line.empty()) {
+            if (!wrapped.empty()) wrapped += "\n";
+            wrapped += line;
+        }
+
+        UiLabel& content = UI::AddLabel(*menu, "message-line-2", wrapped, vec2(0.0f, 0.0f), contentSize, false);
+        content.dynamicPos = [dialoguePos, dialogueDim]() {
+            return dialoguePos + vec2(-dialogueDim.x * 0.5f + 28.0f, 6.0f);
+        };
+        content.spacing = contentSpacing;
     } else if (roomUnlockNotification.treeLifeActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "your help brought new life", vec2(0.0f, 34.0f), 19.0f / zoom, true);
         title.spacing = 1.7f;
@@ -1450,7 +1506,7 @@ void MoveCompletedCharacterToHub(Character& character, const std::vector<vec2>& 
 
     int hubIndex = character.room - 1;
     if (hubIndex >= 0 && hubIndex < static_cast<int>(hubDoorPositions.size())) {
-        character.pos = hubDoorPositions[hubIndex] + vec2(-64.0, -16.0);
+        character.pos = hubDoorPositions[hubIndex] + vec2(-128.0, -16.0);
     }
     character.target = character.pos;
     character.roamCenter = character.pos;
@@ -2720,7 +2776,9 @@ int RunCommunityApp()
                         roomUnlockNotification.npcArrowRoom = -1;
                     }
                     if (interactCharacter->nextStageSpawned) {
-                        ShowSanDiegoOasisNotification();
+                        if (BoxCollide(player.pos, player.dim, interactCharacter->pos, interactCharacter->dim)) {
+                            ShowSanDiegoOasisNotification();
+                        }
                     } else if (interactCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
                     } else if (addTaskForCharacter(*interactCharacter, player)) {

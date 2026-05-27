@@ -37,6 +37,7 @@ struct Button {
     bool clicked = false;
 
     std::function<void()> onClick;
+    std::function<void(vec2, vec2)> drawOverlay;
 
     bool contains(vec2 point) const {
         return BoxCollide(pos, dim, point, vec2(0.0f));
@@ -96,6 +97,10 @@ struct Button {
             drawRectRgba(pos, dim, fallbackHoverColor.x, fallbackHoverColor.y, fallbackHoverColor.z, fallbackHoverColor.w, 0.0f);
         } else {
             drawRectRgba(pos, dim, fallbackColor.x, fallbackColor.y, fallbackColor.z, fallbackColor.w, 0.0f);
+        }
+
+        if (drawOverlay) {
+            drawOverlay(pos, dim);
         }
 
         if (!label.empty()) {

@@ -42,6 +42,7 @@ struct UiLabel {
     float size = 14.0f;
     float spacing = 1.4f;
     bool centered = false;
+    bool rightAligned = false;
     bool visible = true;
 
     void applyDynamic() {
@@ -55,7 +56,9 @@ struct UiLabel {
             return;
         }
 
-        if (centered) {
+        if (rightAligned) {
+            Text::DrawStringRight(text, pos, size, spacing);
+        } else if (centered) {
             Text::DrawStringCentered(text, pos, size, spacing);
         } else {
             Text::DrawString(text, pos, size, spacing);
