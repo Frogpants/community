@@ -2236,13 +2236,14 @@ int RunCommunityApp()
         return vec2(screen.x / zoom, screen.y / zoom);
     };
 
-    UiLabel& menuTitle = UI::AddLabel(mainMenu, "menu-title", "welcome to your community", vec2(0.0f, 180.0f), 42.0f / zoom, true);
+    UiLabel& menuTitle = UI::AddLabel(mainMenu, "menu-title", "Oasis", vec2(0.0f, 180.0f), 42.0f / zoom, true);
     menuTitle.dynamicPos = [&]() {
         return vec2(0.0f, 180.0f + 5.0f * std::sin(timer * 0.08f));
     };
 
-    UI::AddLabel(mainMenu, "menu-subtitle", "click play to start", vec2(0.0f, -220.0f), 18.0f / zoom, true);
-    UI::AddLabel(mainMenu, "menu-footnote", "idiot", vec2(0.0f, -240.0f), 9.0f / zoom, true);
+    UI::AddLabel(mainMenu, "menu-subtitle", "Little acts can make big differences", vec2(0.0f, 56.0f), 18.0f / zoom, true);
+    UI::AddLabel(mainMenu, "menu-story", "San Diego Oasis helps older adults stay connected, supported, and engaged.", vec2(0.0f, -220.0f), 15.0f / zoom, true);
+    UI::AddLabel(mainMenu, "menu-footnote", "A small act of care can brighten a lonely day.", vec2(0.0f, -190.0f), 13.0f / zoom, true);
 
     Button& playMenuButton = UI::AddButton(mainMenu, "play", "play", vec2(0.0f, -80.0f), vec2(140.0f, 70.0f), playButton);
     playMenuButton.labelSize = 28.0f / zoom;
@@ -2879,7 +2880,7 @@ int RunCommunityApp()
                     if (interactCharacter->nextStageSpawned) {
                         vec2 interactionHitbox = GetCharacterInteractionHitbox(*interactCharacter);
                         if (BoxCollide(player.pos, player.dim, interactCharacter->pos, interactionHitbox)) {
-                            ShowSanDiegoOasisNotification();
+                            std::cout << "Next stage unlocked." << std::endl;
                         }
                     } else if (interactCharacter->isRoaming) {
                         std::cout << "This character is dancing. Door opened for the next room." << std::endl;
