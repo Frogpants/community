@@ -2937,6 +2937,15 @@ int RunCommunityApp()
             Text::DrawStringCentered("!", exclamationPos, 18.0f, 1.0f);
 
             if (!Minigames::IsTaskOpen() && !roomUnlockNotification.visible && BoxCollide(player.pos, player.dim, t.pos, t.dim) && Input::IsPressed("e")) {
+                int remainingInRoom = 0;
+                for (const Task& ot : objectives) {
+                    if (ot.room == t.room) {
+                        ++remainingInRoom;
+                    }
+                }
+                if (remainingInRoom <= 1) {
+                    RemovePendingScamCallForRoom(t.room);
+                }
                 Minigames::OpenTask(id, t.name, t.room);
             }
             ++id;
