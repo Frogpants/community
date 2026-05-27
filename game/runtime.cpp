@@ -459,6 +459,14 @@ void UpdatePendingScamCalls(float deltaTime, bool canAttempt) {
     }
 }
 
+void RemovePendingScamCallForRoom(int roomId) {
+    for (int i = static_cast<int>(pendingScamCallRooms.size()) - 1; i >= 0; --i) {
+        if (pendingScamCallRooms[i].task.room == roomId) {
+            pendingScamCallRooms.erase(pendingScamCallRooms.begin() + i);
+        }
+    }
+}
+
 void ShowNextRoomUnlockNotification();
 
 void DismissRoomUnlockNotification() {
