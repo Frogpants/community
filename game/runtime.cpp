@@ -783,6 +783,27 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
     ok.fallbackColor = vec4(0.39f, 0.55f, 0.35f, 1.0f);
     ok.fallbackHoverColor = vec4(0.47f, 0.63f, 0.41f, 1.0f);
     ok.fallbackPressedColor = vec4(0.30f, 0.43f, 0.27f, 1.0f);
+    if (roomUnlockNotification.sanDiegoOasisActive) {
+        ok.label.clear();
+        ok.dynamicDim = []() {
+            return vec2(46.0f, 30.0f);
+        };
+        ok.dynamicPos = [dialoguePos, dialogueDim]() {
+            return dialoguePos + vec2(dialogueDim.x * 0.5f - 60.0f, -dialogueDim.y * 0.5f + 18.0f);
+        };
+        ok.drawOverlay = [](vec2 pos, vec2 dim) {
+            vec2 center = pos + vec2(dim.x * 0.5f, dim.y * 0.5f);
+            glPushMatrix();
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
+            glBegin(GL_TRIANGLES);
+            glVertex2f(center.x + 9.0f, center.y);
+            glVertex2f(center.x - 4.0f, center.y + 8.0f);
+            glVertex2f(center.x - 4.0f, center.y - 8.0f);
+            glEnd();
+            glPopMatrix();
+        };
+    }
     ok.onClick = []() {
         DismissRoomUnlockNotification();
     };
