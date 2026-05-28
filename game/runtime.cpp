@@ -134,6 +134,7 @@ struct RoomUnlockNotificationState {
     bool taskTutorialShown = false;
     bool treeLifeActive = false;
     bool sanDiegoOasisActive = false;
+    std::string dialogueText;
     bool treeLifeReturnPromptActive = false;
     int treeLifeReturnPromptDelayFrames = 0;
     bool treePreviewActive = false;
@@ -150,6 +151,22 @@ struct RoomUnlockNotificationState {
 };
 
 RoomUnlockNotificationState roomUnlockNotification;
+
+const std::vector<std::string> kSanDiegoOasisDialogueLines = {
+    "thanks for helping a lonely guy like me. now I am back outside and part of the community",
+    "after your help, I started taking classes at San Diego Oasis",
+    "San Diego Oasis has really helped me learn new things and build new friendships at my age",
+    "if you like helping people like me, you should volunteer at San Diego Oasis!",
+    "I did not think I would feel this connected again, but this place gave me a fresh start"
+};
+
+std::string PickSanDiegoOasisDialogueLine() {
+    if (kSanDiegoOasisDialogueLines.empty()) {
+        return "supports connection, wellness, and purpose for older adults.";
+    }
+
+    return kSanDiegoOasisDialogueLines[randInt(0, static_cast<int>(kSanDiegoOasisDialogueLines.size()) - 1)];
+}
 
 struct TaskPositionOverride {
     int room = 0;
@@ -477,6 +494,7 @@ void DismissRoomUnlockNotification() {
     roomUnlockNotification.taskTutorialActive = false;
     roomUnlockNotification.treeLifeActive = false;
     roomUnlockNotification.sanDiegoOasisActive = false;
+    roomUnlockNotification.dialogueText.clear();
     roomUnlockNotification.treeLifeReturnPromptActive = false;
     roomUnlockNotification.treeLifeReturnPromptDelayFrames = 0;
     roomUnlockNotification.treePreviewActive = false;
@@ -592,6 +610,7 @@ void ShowSanDiegoOasisNotification() {
     roomUnlockNotification.taskTutorialActive = false;
     roomUnlockNotification.treeLifeActive = false;
     roomUnlockNotification.sanDiegoOasisActive = true;
+    roomUnlockNotification.dialogueText = PickSanDiegoOasisDialogueLine();
     roomUnlockNotification.activeRoom = 0;
 }
 
@@ -677,10 +696,12 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
     }
 
     if (roomUnlockNotification.tutorialActive) {
-        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "welcome enter house 1 to begin", vec2(0.0f, 28.0f), 21.0f / zoom, true);
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "welcome enter house 1 to begin", vec2(0.0f, 40.0f), 21.0f / zoom, true);
         title.spacing = 1.7f;
-        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "click e to interact", vec2(0.0f, -8.0f), 18.0f / zoom, true);
+        UiLabel& detail = UI::AddLabel(*menu, "message-line-2", "use wasd to move", vec2(0.0f, 10.0f), 18.0f / zoom, true);
         detail.spacing = 1.7f;
+        UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "click e to interact", vec2(0.0f, -16.0f), 18.0f / zoom, true);
+        instruction.spacing = 1.7f;
     } else if (roomUnlockNotification.taskTutorialActive) {
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", "new tasks unlocked", vec2(0.0f, 36.0f), 21.0f / zoom, true);
         title.spacing = 1.7f;
@@ -700,14 +721,15 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         detail.spacing = 1.7f;
         
     } else if (roomUnlockNotification.sanDiegoOasisActive) {
-        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "San Diego Oasis", vec2(0.0f, 28.0f), 21.0f / zoom, false);
+        UiLabel& title = UI::AddLabel(*menu, "message-line-1", "Neighborhood Fella", vec2(0.0f, 28.0f), 21.0f / zoom, false);
         title.dynamicPos = [dialoguePos, dialogueDim]() {
             return dialoguePos + vec2(-dialogueDim.x * 0.5f + 28.0f, 28.0f);
         };
         title.spacing = 1.7f;
 
-        // Combine the sentence pieces into a single wrapped label and left-align it inside the dialogue box.
-        std::string combined = "supports connection, wellness, and purpose for older adults.";
+        std::string combined = roomUnlockNotification.dialogueText.empty()
+            ? "supports connection, wellness, and purpose for older adults."
+            : roomUnlockNotification.dialogueText;
         float contentSize = 18.0f / zoom;
         float contentSpacing = 1.7f;
 
@@ -759,7 +781,7 @@ Menu* EnsureRoomUnlockNotificationUiMenu(vec2 screen, float zoom) {
         UiLabel& instruction = UI::AddLabel(*menu, "message-line-3", "look, a tree sprouted!", vec2(0.0f, -26.0f), 17.0f / zoom, true);
         instruction.spacing = 1.7f;
     } else if (!roomUnlockNotification.treeLifeActive) {
-        std::string titleText = "room " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
+        std::string titleText = "house " + std::to_string(roomUnlockNotification.activeRoom) + " unlocked";
         UiLabel& title = UI::AddLabel(*menu, "message-line-1", titleText, vec2(0.0f, 48.0f), 22.0f / zoom, true);
         title.spacing = 1.7f;
 
@@ -2258,7 +2280,7 @@ int RunCommunityApp()
 
     UI::AddLabel(mainMenu, "menu-subtitle", "Little acts can make big differences", vec2(0.0f, 56.0f), 18.0f / zoom, true);
     UI::AddLabel(mainMenu, "menu-story", "San Diego Oasis helps older adults stay connected, supported, and engaged.", vec2(0.0f, -220.0f), 15.0f / zoom, true);
-    UI::AddLabel(mainMenu, "menu-footnote", "A small act of care can brighten a lonely day.", vec2(0.0f, -190.0f), 13.0f / zoom, true);
+    UI::AddLabel(mainMenu, "menu-footnote", "A small act of care can brighten a lonely day!", vec2(0.0f, -190.0f), 13.0f / zoom, true);
 
     Button& playMenuButton = UI::AddButton(mainMenu, "play", "play", vec2(0.0f, -80.0f), vec2(140.0f, 70.0f), playButton);
     playMenuButton.labelSize = 28.0f / zoom;
