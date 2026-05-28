@@ -2303,6 +2303,10 @@ int RunCommunityApp()
 
     bool gameStarted = false;
 
+    // Preload music assets at startup
+    Audio::Preload("menu-music", "assets/audio/Menu_Town.mp3", true);
+    Audio::Preload("game-music", "assets/audio/apple_cider.wav", true);
+
     Menu& settingsMenu = UI::CreateMenu("settings-menu");
     settingsMenu.visible = false;
     settingsMenu.enabled = false;
@@ -2430,15 +2434,15 @@ int RunCommunityApp()
         // Handle music switching based on game state
         if (inMainMenu) {
             if (!s_menuMusicPlaying) {
-                Audio::StopAll();
-                Audio::Play("assets/audio/Menu_Town.mp3", true);
+                Audio::StopCached("game-music");
+                Audio::PlayCached("menu-music");
                 s_menuMusicPlaying = true;
                 s_gameMusicPlaying = false;
             }
         } else if (!inSettingsMenu) {
             if (!s_gameMusicPlaying) {
-                Audio::StopAll();
-                Audio::Play("assets/audio/apple_cider.wav", true);
+                Audio::StopCached("menu-music");
+                Audio::PlayCached("game-music");
                 s_gameMusicPlaying = true;
                 s_menuMusicPlaying = false;
             }

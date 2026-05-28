@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -29,8 +30,6 @@ bool s_engineInitialized = false;
 std::vector<std::unique_ptr<ma_sound>> s_loopingSounds;
 std::unordered_map<std::string, std::unique_ptr<ma_sound>> s_cachedSounds;
 float s_volume = 1.0f;
-
-#include <unordered_map>
 
 std::string GetExeDir() {
 #ifdef _WIN32
@@ -176,6 +175,51 @@ void SetVolume(float volume) {
     }
 
     ma_engine_set_volume(&s_engine, s_volume);
+}
+
+bool Preload(const std::string& name, const std::string& path, bool loop) {
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!EnsureEngineLocked()) {
+        return false;
+    }
+
+    const std::string resolvedPath = ResolveSoundPath(path);
+
+    auto sound = std::make_unique<ma_sound>();
+    if (ma_sound_init_from_file(&s_engine, resolvedPath.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, sound.get()) != MA_SUCCESS) {
+        return false;
+    }
+
+    if (loop) {
+        ma_sound_set_looping(sound.get(), MA_TRUE);
+    }
+
+    s_cachedSounds[name] = std::move(sound);
+    return true;
+}
+
+void PlayCached(const std::string& name) {
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!EnsureEngineLocked()) {
+        return;
+    }
+
+    auto it = s_cachedSounds.find(name);
+    if (it == s_cachedSounds.end() || !it->second) {
+        return;
+    }
+
+    ma_sound_start(it->second.get());
+}
+
+void StopCached(const std::string& name) {
+    std::lock_guard<std::mutex> lock(s_mutex);
+    auto it = s_cachedSounds.find(name);
+    if (it == s_cachedSounds.end() || !it->second) {
+        return;
+    }
+
+    ma_sound_stop(it->second.get());
 }
 
 } // namespace Audio
