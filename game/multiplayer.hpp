@@ -162,6 +162,11 @@ public:
         return statusText;
     }
 
+    std::string getPlayerCountText() const {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        return playerCountText;
+    }
+
     bool isConnected() const {
         std::lock_guard<std::mutex> lock(stateMutex);
         return connected;
@@ -177,6 +182,7 @@ private:
     std::string requestedRoomCode;
     std::string roomCode;
     std::string statusText = "multiplayer offline";
+    std::string playerCountText = "players 1";
 
     bool connected = false;
     vec2 latestLocalPos = vec2(0.0f);
@@ -451,6 +457,7 @@ private:
         roomCode = parsedRoomCode;
         connected = true;
         statusText = "room " + roomCode;
+        playerCountText = "players 1";
         return true;
     }
 
@@ -597,7 +604,8 @@ private:
                 visibleRemoteCount += 1;
             }
         }
-        statusText = "room " + localRoomCode + " players " + std::to_string(visibleRemoteCount + 1);
+        statusText = "room " + localRoomCode;
+        playerCountText = "players " + std::to_string(visibleRemoteCount + 1);
     }
 
     void workerLoop() {

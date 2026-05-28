@@ -3112,7 +3112,7 @@ int RunCommunityApp()
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
 
         std::string roomText = "room " + std::to_string(player.room);
-    Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 182) / zoom, 20.0f / zoom, 1.5f);
+        Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 236) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
             HouseTilesetGroup* activeHouseTilesetGroup = nullptr;
@@ -3192,6 +3192,7 @@ int RunCommunityApp()
         }
 
         Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 132) / zoom, 20.0f / zoom, 1.5f);
+        Text::DrawString(multiplayer.getPlayerCountText(), vec2(-screen.x + 40, screen.y - 186) / zoom, 20.0f / zoom, 1.5f);
 
         float y = 112.0;
         for (const std::string& t : player.tasks) {
