@@ -4,9 +4,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cmath>
 #include <deque>
 #include <map>
 #include <mutex>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -144,7 +146,7 @@ public:
         }
     }
 
-    void drawRemotePlayers(GLuint sharedTexture, int localRoom) {
+    void drawRemotePlayers(const std::vector<GLuint>& playerTextures, int localRoom, float drawSize, float animationTimer) {
         std::lock_guard<std::mutex> lock(stateMutex);
         for (const auto& entry : remotes) {
             const RemotePlayer& remote = entry.second;
@@ -152,8 +154,9 @@ public:
                 continue;
             }
             vec2 drawPos = remote.hasRenderPos ? remote.renderPos : remote.pos;
-            Image::Draw(sharedTexture, drawPos, 150.0f);
-            Text::DrawStringCentered(remote.playerName, vec2(drawPos.x, drawPos.y + 190.0f), 14.0f, 1.3f);
+            GLuint remoteTexture = chooseRemoteTexture(remote, playerTextures, animationTimer);
+            Image::Draw(remoteTexture, drawPos, drawSize);
+            Text::DrawStringCentered(remote.playerName, vec2(drawPos.x, drawPos.y + drawSize + 40.0f), 14.0f, 1.3f);
         }
     }
 
@@ -192,6 +195,36 @@ private:
 
     std::thread worker;
     std::atomic<bool> stopRequested = false;
+
+    GLuint chooseRemoteTexture(const RemotePlayer& remote, const std::vector<GLuint>& playerTextures, float animationTimer) const {
+        if (playerTextures.size() < 5) {
+            return playerTextures.empty() ? 0 : playerTextures[0];
+        }
+
+        vec2 movement = vec2(0.0f);
+        if (remote.positionBuffer.size() >= 2) {
+            const RemotePlayer::PositionSample& previous = remote.positionBuffer[remote.positionBuffer.size() - 2];
+            const RemotePlayer::PositionSample& latest = remote.positionBuffer.back();
+            movement = latest.pos - previous.pos;
+        }
+
+        float speed = std::sqrt(movement.x * movement.x + movement.y * movement.y);
+        const float movementThreshold = 0.35f;
+
+        bool facingBackwards = movement.y > 0.0f;
+        if (speed <= movementThreshold) {
+            return playerTextures[facingBackwards ? 3 : 0];
+        }
+
+        std::size_t hashValue = std::hash<std::string>{}(remote.playerId.empty() ? remote.playerName : remote.playerId);
+        float phaseOffset = static_cast<float>(hashValue % 1000) / 1000.0f;
+        int frame = static_cast<int>(std::floor((animationTimer + phaseOffset) * 8.0f)) % 2;
+        if (frame < 0) {
+            frame = 0;
+        }
+
+        return playerTextures[facingBackwards ? 3 + frame : 1 + frame];
+    }
 
     Http::Response tryPostJson(const std::string& path, const std::string& jsonBody) const {
         std::string currentHost;

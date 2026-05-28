@@ -3085,7 +3085,7 @@ int RunCommunityApp()
 
         float playerDrawSize = 150.0f * spriteScaleFactor;
         Image::Draw(activePlayerTexture, player.pos, playerDrawSize);
-        multiplayer.drawRemotePlayers(activePlayerTexture, player.room);
+        multiplayer.drawRemotePlayers(player.textures, player.room, playerDrawSize, playerAnimTimer);
         for (const Character& c : characters) {
             if (ShouldDrawCharacterInCurrentRoom(c, player.room)) {
                 Image::Draw(c.texture, c.pos, playerDrawSize);
