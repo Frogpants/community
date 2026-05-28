@@ -63,6 +63,7 @@ public:
 #include "core/net/http.hpp"
 #include "core/text.hpp"
 #include "core/file.hpp"
+#include "core/audio.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -109,6 +110,10 @@ std::vector<Task> objectives;
 std::string gLocalPlayerName;
 const int taskLevelIncrease = 20;
 bool gameNotificationsEnabled = true;
+
+// Music state
+static bool s_menuMusicPlaying = false;
+static bool s_gameMusicPlaying = false;
 
 const std::string goIntoRoomsNotificationMenuId = "go-into-rooms-notification";
 
@@ -2043,6 +2048,9 @@ void ApplyRemoteTaskProgressState(const std::string& serializedState,
 int RunCommunityApp()
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    
+    // Initialize audio system
+    Audio::Init();
 
     std::vector<Tile> tiles;
     tiles = genWorld(vec2(120,100));
@@ -2418,6 +2426,23 @@ int RunCommunityApp()
         glLoadIdentity();
 
         timer += 0.01;
+
+        // Handle music switching based on game state
+        if (inMainMenu) {
+            if (!s_menuMusicPlaying) {
+                Audio::StopAll();
+                Audio::Play("assets/audio/Menu_Town.mp3", true);
+                s_menuMusicPlaying = true;
+                s_gameMusicPlaying = false;
+            }
+        } else if (!inSettingsMenu) {
+            if (!s_gameMusicPlaying) {
+                Audio::StopAll();
+                Audio::Play("assets/audio/apple_cider.wav", true);
+                s_gameMusicPlaying = true;
+                s_menuMusicPlaying = false;
+            }
+        }
 
         if (inMainMenu) {
             if (Menu* menu = UI::FindMenu("main-menu")) {

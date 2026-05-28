@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../images/image.hpp"
+#include "../audio.hpp"
 #include "../text.hpp"
 #include "../mouse/mouse.hpp"
 #include "../essentials.hpp"
@@ -67,6 +68,7 @@ struct Button {
             touching = true;
             held = Mouse::IsDown(0);
             if (Mouse::IsPressed(0)) {
+                Audio::Play("assets/audio/click.wav");
                 clicked = true;
                 if (onClick) {
                     onClick();
