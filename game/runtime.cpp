@@ -1318,7 +1318,6 @@ std::vector<HouseTilesetGroup> loadHouseTilesets() {
 
 std::vector<std::string> tileTex = loadTileLibrary();
 std::vector<std::string> itemTex = loadAssetFiles("items");
-std::vector<std::string> heartTex = loadAssetFiles("stats/health");
 
 // Game Control Variables
 
@@ -2094,7 +2093,6 @@ int RunCommunityApp()
 
     std::vector<GLuint> tileTextures = loadTextures(tileTex);
     std::vector<GLuint> itemTextures = loadTextures(itemTex);
-    std::vector<GLuint> heartTextures = loadTextures(heartTex);
     std::vector<GLuint> houseTextures;
     std::vector<vec2> houseFootprints;
 
@@ -2374,7 +2372,7 @@ int RunCommunityApp()
     hudSettingsButton.fallbackHoverColor = vec4(0.42f, 0.56f, 0.39f, 1.0f);
     hudSettingsButton.fallbackPressedColor = vec4(0.26f, 0.34f, 0.25f, 1.0f);
     hudSettingsButton.dynamicPos = []() {
-        return vec2(-screen.x + 210.0f, screen.y - 118.0f) / zoom;
+        return vec2(-screen.x + 210.0f, screen.y - 70.0f) / zoom;
     };
     hudSettingsButton.dynamicDim = []() {
         return vec2(170.0f, 34.0f) / zoom;
@@ -2387,7 +2385,7 @@ int RunCommunityApp()
     UiLabel& hudSettingsLabel = UI::AddLabel(hudSettingsMenu, "settings-label", "settings", vec2(0.0f), 16.0f / zoom, true);
     hudSettingsLabel.spacing = 1.8f;
     hudSettingsLabel.dynamicPos = []() {
-        return vec2(-screen.x + 192.0f, screen.y - 123.0f) / zoom;
+        return vec2(-screen.x + 192.0f, screen.y - 75.0f) / zoom;
     };
 
     double lastFrameTime = glfwGetTime();
@@ -3099,19 +3097,6 @@ int RunCommunityApp()
         Character* uiCharacter = getCharacterForRoom(characters, player.room);
         int uiLevel = (uiCharacter != nullptr) ? uiCharacter->level : 0;
         
-        for (int i = 0; i < 9; ++i) {
-            float perc = (uiLevel / 90.0f) - (i * 0.1f);
-            GLuint tex;
-            if (perc >= 0.1) {
-                tex = heartTextures[1];
-            } else if (perc >= 0.05) {
-                tex = heartTextures[2];
-            } else {
-                tex = heartTextures[0];
-            }
-            Image::Draw(tex, vec2(-screen.x + 64*i + 48, screen.y - 48) / zoom, 16);
-        }
-
         if (!Minigames::IsTaskOpen()) {
             if (Menu* menu = UI::FindMenu("hud-settings-menu")) {
                 menu->visible = true;
@@ -3127,7 +3112,7 @@ int RunCommunityApp()
         Text::DrawString(taskText, vec2(screen.x - 600, screen.y - 48) / zoom, 24.0f / zoom, 1.5f);
 
         std::string roomText = "room " + std::to_string(player.room);
-        Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 230) / zoom, 20.0f / zoom, 1.5f);
+    Text::DrawString(roomText, vec2(-screen.x + 40, screen.y - 182) / zoom, 20.0f / zoom, 1.5f);
 
         if (mode) {
             HouseTilesetGroup* activeHouseTilesetGroup = nullptr;
@@ -3206,7 +3191,7 @@ int RunCommunityApp()
             }
         }
 
-        Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 180) / zoom, 20.0f / zoom, 1.5f);
+        Text::DrawString(multiplayer.getStatusText(), vec2(-screen.x + 40, screen.y - 132) / zoom, 20.0f / zoom, 1.5f);
 
         float y = 112.0;
         for (const std::string& t : player.tasks) {
